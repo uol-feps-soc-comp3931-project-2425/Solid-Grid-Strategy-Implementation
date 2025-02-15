@@ -121,7 +121,7 @@ class GraphCreator(QWidget):
         # Check if the node is a border node
         if self.is_border_node(closest_node):
             if self.is_removal_safe(closest_node):
-                self.G.remove_node(closest_node)
+                self.graph.remove_node(closest_node)
                 self.redraw_graph()  
     
     """Redraws the graph"""
@@ -215,8 +215,11 @@ class GameWindow(QWidget):
     """Place cop and robber on starting posistions"""
     def place_cop_and_robber(self):
         # Currently Lowest xy for robber, Highest xy for cop
-        self.robber_node = min(self.pos.keys(), key=lambda k: (self.pos[k][0], self.pos[k][1]))
-        self.cop_node = max(self.pos.keys(), key=lambda k: (self.pos[k][0], self.pos[k][1]))
+        existing_nodes = list(self.graph.nodes)
+
+        self.robber_node = min(existing_nodes, key=lambda k: (self.pos[k][0], self.pos[k][1]))
+
+        self.cop_node = max(existing_nodes, key=lambda k: (self.pos[k][0], self.pos[k][1]))
 
     """Handle mouse click events."""
     def on_click(self, event):
