@@ -1,18 +1,35 @@
-from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QLineEdit, QPushButton, QLabel
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QLineEdit, QPushButton, QLabel, QStackedWidget
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import networkx as nx
 
-class MainWindow(QMainWindow):
+class MainApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Graph Visualizer")
         self.setGeometry(100, 100, 800, 600)
 
+        self.stacked_widget = QStackedWidget()
+        self.setCentralWidget(self.stacked_widget)
+
+        self.graph_creator_window = GraphCreator(self)
+        self.stacked_widget.addWidget(self.graph_creator_window)
+
+        self.game_window = GameWindow(self)
+        self.stacked_widget.addWidget(self.game_window)
+
+    """Switch to the game window."""
+    def switch_to_game_window(self, graph, pos, node_size):
+        self.game_window.display_graph(graph, pos, node_size)
+        self.stacked_widget.setCurrentIndex(1)
+
+class GraphCreator(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+
         # Central widget and layout
-        central_widget = QWidget(self)
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
+        layout = QVBoxLayout(self)
 
         # Input fields for grid dimensions
         self.label = QLabel("Enter grid dimensions (rows × cols):")
@@ -31,6 +48,11 @@ class MainWindow(QMainWindow):
         self.button.clicked.connect(self.generate_graph)
         layout.addWidget(self.button)
 
+        # Button to submit graph
+        self.button_submit = QPushButton("Submit", self)
+        self.button_submit.clicked.connect(self.submit_graph)
+        layout.addWidget(self.button_submit)
+
         # Matplotlib Figure
         self.canvas = FigureCanvas(Figure())
         layout.addWidget(self.canvas)
@@ -42,7 +64,6 @@ class MainWindow(QMainWindow):
         self.G = None  # Placeholder for the graph object
         self.pos = {}  # Placeholder for positions
         self.node_size = None # Placeholder for node size
-
 
     """Generate a grid graph based on user input and display it."""
     def generate_graph(self):
@@ -132,7 +153,35 @@ class MainWindow(QMainWindow):
         # If the number of components increased, removing this node is unsafe
         return new_components == initial_components
 
+    def submit_graph(self):
+        if not self.G:
+            return
+
+        # Disconnect the mouse click event to prevent further interactions
+        self.canvas.mpl_disconnect("button_press_event")
+
+        # Switch to the graph display window
+        self.parent.switch_to_game_window(self.G, self.pos, self.node_size)
+
+class GameWindow(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+
+        layout = QVBoxLayout(self)
+
+        self.canvas = FigureCanvas(Figure())
+        layout.addWidget(self.canvas)
+
+    """Display the graph."""
+    def display_graph(self, graph, pos, node_size):  
+        self.canvas.figure.clear()
+        ax = self.canvas.figure.add_subplot(111)
+        nx.draw(graph, pos, ax=ax, with_labels=False, node_color="lightblue", node_size=node_size)
+        self.canvas.draw()
+
+
 app = QApplication([])
-window = MainWindow()
+window = MainApp()
 window.show()
 app.exec_()
