@@ -6,6 +6,7 @@ import networkx as nx
 class MainApp(QMainWindow):
     def __init__(self):
         super().__init__()
+        # Set up stacked window to switch between defined windows
         self.setWindowTitle("Graph Visualizer")
         self.setGeometry(100, 100, 800, 600)
 
@@ -63,9 +64,9 @@ class GraphCreator(QWidget):
         self.canvas.mpl_connect("button_press_event", self.on_click)
 
         # Instance variables for storing the graph
-        self.G = None  # Placeholder for the graph object
-        self.pos = {}  # Placeholder for positions
-        self.node_size = None # Placeholder for node size
+        self.graph = None  
+        self.pos = {}  
+        self.node_size = None
 
     """Generate a grid graph based on user input and display it."""
     def generate_graph(self):
@@ -80,11 +81,12 @@ class GraphCreator(QWidget):
             self.label.setText(f"Grid {rows} × {cols}")
 
             # Create the grid graph
-            self.G = nx.grid_2d_graph(rows, cols)
+            self.graph = nx.grid_2d_graph(rows, cols)
 
             # Update the posistions so the graph forms a grid
-            self.pos = {(x, y): (y, -x) for x, y in self.G.nodes()}  # Invert y for correct orientation from networkX to matplotlib
+            self.pos = {(x, y): (y, -x) for x, y in self.graph.nodes()}  # Invert y for correct orientation from networkX to matplotlib
 
+            # Update node size dynamically as node number increases
             self.node_size = max(50, 2000 // (rows * cols))
 
             # Draw the graph
@@ -98,12 +100,12 @@ class GraphCreator(QWidget):
         if event.xdata is None or event.ydata is None:
             return  # Ignore clicks outside the plot
 
-        # Define a threshold distance
+        # Define a threshold distance to decide on which clicks to count
         click_threshold = 0.25
 
         # Find the nearest node
         closest_node, min_distance = None, float('inf')
-        for node in self.G.nodes:
+        for node in self.graph.nodes:
             dist = (self.pos[node][0] - event.xdata) ** 2 + (self.pos[node][1] - event.ydata) ** 2
             if dist < min_distance:
                 min_distance = dist
@@ -119,14 +121,14 @@ class GraphCreator(QWidget):
         # Check if the node is a border node
         if self.is_border_node(closest_node):
             if self.is_removal_safe(closest_node):
-                self.G.remove_node(closest_node)  # Remove the node
-                self.redraw_graph()  # Redraw the updated graph
+                self.G.remove_node(closest_node)
+                self.redraw_graph()  
     
-    """Redraws the graph after node deletion."""
+    """Redraws the graph"""
     def redraw_graph(self):
         self.canvas.figure.clear()
         ax = self.canvas.figure.add_subplot(111)
-        nx.draw(self.G, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size)
+        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size)
         self.canvas.draw()
 
     """Check if a node is on the border (has a missing neighbor)."""
@@ -135,35 +137,35 @@ class GraphCreator(QWidget):
         #neighbors = [(x-1, y), (x+1, y), (x, y-1), (x, y+1), (x-1, y-1), (x-1, y+1), (x+1, y-1), (x+1, y+1)]
         neighbors = [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
         for neigh in neighbors:
-            if neigh not in self.G.nodes:
+            if neigh not in self.graph.nodes:
                 return True
         return False
 
-    """Check if removing a node would split the graph."""
+    """Check if removing a node would split the graph making it disconnected"""
     def is_removal_safe(self, node):
         
         # Count connected components before removal
-        initial_components = nx.number_connected_components(self.G)
+        initial_components = nx.number_connected_components(self.graph)
 
         # Simulate removal
-        G_copy = self.G.copy()
-        G_copy.remove_node(node)
+        graph_copy = self.graph.copy()
+        graph_copy.remove_node(node)
 
         # Count components after simulated removal
-        new_components = nx.number_connected_components(G_copy)
+        new_components = nx.number_connected_components(graph_copy)
 
         # If the number of components increased, removing this node is unsafe
         return new_components == initial_components
 
+    """Handle submit button functionality to change window"""
     def submit_graph(self):
-        if not self.G:
+        if not self.graph:
             return
 
-        # Disconnect the mouse click event to prevent further interactions
+        # Disconnect the mouse click event
         self.canvas.mpl_disconnect("button_press_event")
 
-        # Switch to the graph display window
-        self.parent.switch_to_game_window(self.G, self.pos, self.node_size)
+        self.parent.switch_to_game_window(self.graph, self.pos, self.node_size)
 
 class GameWindow(QWidget):
     def __init__(self, parent):
@@ -176,11 +178,19 @@ class GameWindow(QWidget):
         self.node_size = None
         self.cop_node = None
         self.robber_node = None
+        self.is_robber_turn = True
 
         # Set up layout and canvas
         layout = QVBoxLayout(self)
+
+        self.turn_label = QLabel("Robber's Turn", self)
+        layout.addWidget(self.turn_label)
+
         self.canvas = FigureCanvas(Figure())
         layout.addWidget(self.canvas)
+
+        # Connect mouse click event
+        self.canvas.mpl_connect("button_press_event", self.on_click)
 
     """Update the sotred graph info."""
     def update_graph(self, graph, pos, node_size):  
@@ -189,18 +199,80 @@ class GameWindow(QWidget):
         self.node_size = node_size
 
     """Display the graph."""
-    def display_graph(self):  
+    def display_graph(self):
         self.canvas.figure.clear()
         ax = self.canvas.figure.add_subplot(111)
-        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size)
-        self.canvas.draw()
 
+        # Draw user created graph
+        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size)
+
+        # Highlight cop and robber nodes through colour and size
         nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.cop_node], node_color="blue", ax=ax, node_size=self.node_size+50)
         nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size+50)
 
+        self.canvas.draw()
+
+    """Place cop and robber on starting posistions"""
     def place_cop_and_robber(self):
+        # Currently Lowest xy for robber, Highest xy for cop
         self.robber_node = min(self.pos.keys(), key=lambda k: (self.pos[k][0], self.pos[k][1]))
         self.cop_node = max(self.pos.keys(), key=lambda k: (self.pos[k][0], self.pos[k][1]))
+
+    """Handle mouse click events."""
+    def on_click(self, event):
+        if event.xdata is None or event.ydata is None:
+            return  # Ignore clicks outside the plot
+
+        # Define a threshold distance to decide on which clicks to count
+        click_threshold = 0.25
+
+        # Find the nearest node
+        closest_node, min_distance = None, float('inf')
+        for node in self.graph.nodes:
+            dist = (self.pos[node][0] - event.xdata) ** 2 + (self.pos[node][1] - event.ydata) ** 2
+            if dist < min_distance:
+                min_distance = dist
+                closest_node = node
+
+        # Convert squared distance to actual distance for comparison
+        min_distance = min_distance ** 0.5  
+
+        # Only proceed if the click is within the threshold distance
+        if min_distance > click_threshold:
+            return
+
+        # Check if the clicked node is a valid move
+        if self.is_robber_turn:
+            self.make_move(closest_node, "robber")
+        else:
+            self.make_move(closest_node, "cop")
+
+    """Make a move for the robber or cop"""
+    def make_move(self, closest_node, player):
+        if player == "robber":
+            current_node = self.robber_node
+        elif player == "cop":
+            current_node = self.cop_node
+        else:
+            return
+        
+        # Check if node near mouse click is a neighbour of player posistion node
+        if closest_node in self.graph.neighbors(current_node):
+
+            # Update player posistion node as click was a valid move
+            if player == "robber":
+                self.robber_node = closest_node
+            else:
+                self.cop_node = closest_node
+            
+            self.is_robber_turn = not self.is_robber_turn
+
+            if self.is_robber_turn:
+                self.turn_label.setText("Robber's Turn")
+            else:
+                self.turn_label.setText("Cop's Turn")
+            
+            self.display_graph()
 
 app = QApplication([])
 window = MainApp()
