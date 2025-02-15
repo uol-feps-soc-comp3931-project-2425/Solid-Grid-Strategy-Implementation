@@ -35,8 +35,17 @@ class MainWindow(QMainWindow):
         self.canvas = FigureCanvas(Figure())
         layout.addWidget(self.canvas)
 
+        # Connect mouse click event
+        self.canvas.mpl_connect("button_press_event", self.on_click)
+
+        # Instance variables for storing the graph
+        self.G = None  # Placeholder for the graph object
+        self.pos = {}  # Placeholder for positions
+        self.node_size = None # Placeholder for node size
+
+
+    """Generate a grid graph based on user input and display it."""
     def generate_graph(self):
-        """Generate a grid graph based on user input and display it."""
         try:
             rows = int(self.input_rows.text())
             cols = int(self.input_cols.text())
@@ -48,22 +57,38 @@ class MainWindow(QMainWindow):
             self.label.setText(f"Grid {rows} × {cols}")
 
             # Create the grid graph
-            G = nx.grid_2d_graph(rows, cols)
+            self.G = nx.grid_2d_graph(rows, cols)
 
-            # Clear the previous plot
-            self.canvas.figure.clear()
-            ax = self.canvas.figure.add_subplot(111)
+            # Update the posistions so the graph forms a grid
+            self.pos = {(x, y): (y, -x) for x, y in self.G.nodes()}  # Invert y for correct orientation from networkX to matplotlib
 
-            # Draw the new graph
-            pos = {(x, y): (y, -x) for x, y in G.nodes()}  # Invert y for correct orientation from networkX to matplotlib
-            node_size = max(50, 2000 // (rows * cols))
-            nx.draw(G, pos, ax=ax, with_labels=False, node_color="lightblue", node_size=node_size)
+            self.node_size = max(50, 2000 // (rows * cols))
 
-            # Refresh the canvas
-            self.canvas.draw()
+            # Draw the graph
+            self.redraw_graph()
 
         except ValueError:
             self.label.setText("Error: Please enter valid integers.")
+
+    """Handle mouse click to remove border nodes."""
+    def on_click(self, event):
+        if event.xdata is None or event.ydata is None:
+            return  # Ignore clicks outside the plot
+
+        # Find the nearest node to the click
+        clicked_node = min(self.G.nodes, key=lambda n: (self.pos[n][0] - event.xdata)**2 + (self.pos[n][1] - event.ydata)**2)
+
+        # Check if the node is a border node
+        if self.G.degree[clicked_node] < 4:
+            self.G.remove_node(clicked_node)  # Remove the node
+            self.redraw_graph()  # Redraw the updated graph
+    
+    """Redraws the graph after node deletion."""
+    def redraw_graph(self):
+        self.canvas.figure.clear()
+        ax = self.canvas.figure.add_subplot(111)
+        nx.draw(self.G, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size)
+        self.canvas.draw()
 
 app = QApplication([])
 window = MainWindow()
