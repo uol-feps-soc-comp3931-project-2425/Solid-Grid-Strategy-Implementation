@@ -87,7 +87,7 @@ class GraphCreator(QWidget):
             self.pos = {(x, y): (y, -x) for x, y in self.graph.nodes()}  # Invert y for correct orientation from networkX to matplotlib
 
             # Update node size dynamically as node number increases
-            self.node_size = max(50, 2000 // (rows * cols))
+            self.node_size = max(50, 4000 // (rows * cols))
 
             # Draw the graph
             self.redraw_graph()
@@ -204,11 +204,21 @@ class GameWindow(QWidget):
         ax = self.canvas.figure.add_subplot(111)
 
         # Draw user created graph
-        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size)
+        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size, node_shape='s')
 
+        # Highlight Legal moves
+        if self.is_robber_turn:
+            legal_moves = list(self.graph.neighbors(self.robber_node))
+            legal_moves.append(self.robber_node)
+        else:
+            legal_moves = list(self.graph.neighbors(self.cop_node))
+            legal_moves.append(self.cop_node)
+        
         # Highlight cop and robber nodes through colour and size
-        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.cop_node], node_color="blue", ax=ax, node_size=self.node_size+50)
-        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size+50)
+        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.cop_node], node_color="blue", ax=ax, node_size=self.node_size*0.7)
+        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size*0.7)
+
+        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=legal_moves, node_color="black", ax=ax, node_size=self.node_size*0.2, alpha=0.7)
 
         self.canvas.draw()
 
@@ -260,7 +270,7 @@ class GameWindow(QWidget):
             return
         
         # Check if node near mouse click is a neighbour of player posistion node
-        if closest_node in self.graph.neighbors(current_node):
+        if closest_node in self.graph.neighbors(current_node) or closest_node == current_node:
 
             # Update player posistion node as click was a valid move
             if player == "robber":
