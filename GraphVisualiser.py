@@ -20,7 +20,9 @@ class MainApp(QMainWindow):
 
     """Switch to the game window."""
     def switch_to_game_window(self, graph, pos, node_size):
-        self.game_window.display_graph(graph, pos, node_size)
+        self.game_window.update_graph(graph, pos, node_size)
+        self.game_window.place_cop_and_robber()
+        self.game_window.display_graph()
         self.stacked_widget.setCurrentIndex(1)
 
 class GraphCreator(QWidget):
@@ -168,18 +170,37 @@ class GameWindow(QWidget):
         super().__init__(parent)
         self.parent = parent
 
-        layout = QVBoxLayout(self)
+        # Initialize graph info
+        self.graph = None
+        self.pos = {}
+        self.node_size = None
+        self.cop_node = None
+        self.robber_node = None
 
+        # Set up layout and canvas
+        layout = QVBoxLayout(self)
         self.canvas = FigureCanvas(Figure())
         layout.addWidget(self.canvas)
 
+    """Update the sotred graph info."""
+    def update_graph(self, graph, pos, node_size):  
+        self.graph = graph
+        self.pos = pos
+        self.node_size = node_size
+
     """Display the graph."""
-    def display_graph(self, graph, pos, node_size):  
+    def display_graph(self):  
         self.canvas.figure.clear()
         ax = self.canvas.figure.add_subplot(111)
-        nx.draw(graph, pos, ax=ax, with_labels=False, node_color="lightblue", node_size=node_size)
+        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size)
         self.canvas.draw()
 
+        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.cop_node], node_color="blue", ax=ax, node_size=self.node_size+50)
+        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size+50)
+
+    def place_cop_and_robber(self):
+        self.robber_node = min(self.pos.keys(), key=lambda k: (self.pos[k][0], self.pos[k][1]))
+        self.cop_node = max(self.pos.keys(), key=lambda k: (self.pos[k][0], self.pos[k][1]))
 
 app = QApplication([])
 window = MainApp()
