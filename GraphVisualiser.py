@@ -175,10 +175,17 @@ class GameWindow(QWidget):
         self.graph = None
         self.pos = {}
         self.node_size = None
-        self.cop_node = None
+
+        # Player States
+        self.cop_nodes = []
+        self.cop_moved = [False, False]
         self.robber_node = None
+        self.robber_moved = False
+
+        # Game States
         self.is_robber_turn = False
         self.is_placement_phase = True
+     
 
         # Set up layout and canvas
         layout = QVBoxLayout(self)
@@ -208,21 +215,29 @@ class GameWindow(QWidget):
 
         # Highlight Legal moves
         if not self.is_placement_phase:
+
+            # Single robber so legal moves only based on single node neighbours
             if self.is_robber_turn:
                 legal_moves = list(self.graph.neighbors(self.robber_node))
                 legal_moves.append(self.robber_node)
+            # Two cops so legal moves based on two nodes neighbours
             else:
-                legal_moves = list(self.graph.neighbors(self.cop_node))
-                legal_moves.append(self.cop_node)
+                legal_moves=[]
+                for i in range(len(self.cop_nodes)):
+                    if not self.cop_moved[i]:
+                        legal_moves.extend(self.graph.neighbors(self.cop_nodes[i]))
+                        legal_moves.append(self.cop_nodes[i])
+        # In placement phase any node is a legal move unless occupied 
         else:
-            legal_moves = list(self.graph.nodes)    
+            legal_moves = [node for node in self.graph.nodes if node not in self.cop_nodes]
     
         # Highlight cop and robber nodes through colour and size
-        if self.cop_node is not None:
-            nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.cop_node], node_color="blue", ax=ax, node_size=self.node_size*0.7)
+        if self.cop_nodes:
+            nx.draw_networkx_nodes(self.graph, self.pos, nodelist=self.cop_nodes, node_color="blue", ax=ax, node_size=self.node_size*0.7)
         if self.robber_node is not None:
             nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size*0.7)
 
+        # Highlight legal moves
         nx.draw_networkx_nodes(self.graph, self.pos, nodelist=legal_moves, node_color="black", ax=ax, node_size=self.node_size*0.2, alpha=0.7)
 
         self.canvas.draw()
@@ -263,39 +278,80 @@ class GameWindow(QWidget):
             if player == "robber":
                 self.robber_node = closest_node
             else:
-                self.cop_node = closest_node
 
-            # Switch to next players turn
-            self.is_robber_turn = not self.is_robber_turn
+                # Adds node to list to say that is one of the cop nodes
+                self.cop_nodes.append(closest_node)
+                self.cop_moved[len(self.cop_nodes)-1] = True
+            
+            # Check if both cops have made a move
+            both_moved = True
+            for placed in self.cop_moved:
+                if not placed:
+                    both_moved = False
 
-            if self.is_robber_turn:
+            # Once both cops and robber has been placed, phase changes out of the placement phase
+            if both_moved and self.robber_node is not None:
+                self.is_robber_turn = not self.is_robber_turn
+                self.cop_moved = [False, False]
+                self.is_placement_phase = False
+                self.turn_label.setText("Cop's Turn")
+            # Once both cops have made a move change to robbers turn
+            elif both_moved:
+                self.is_robber_turn = not self.is_robber_turn
                 self.turn_label.setText("Robber's Placement Phase")
             else:
-                self.is_placement_phase = False
+                self.turn_label.setText("Cop's Placement Phase 2")
         else:
-
-            # Get the node where the player is currently posistioned 
-            if player == "robber":
-                current_node = self.robber_node
-            elif player == "cop":
-                current_node = self.cop_node
             
-            # Check if node near mouse click is a neighbour of player posistion node
-            is_valid_move = closest_node in self.graph.neighbors(current_node) or closest_node == current_node
+            is_valid_move = False
+            is_valid_move1 = False
+            is_valid_move2 = False
+            
+            # Get the node where the player is currently posistioned
+            if player == "robber":
 
-            if is_valid_move:
-                # Update player node as node clicked is a valid move
+                # Check if node near mouse click is a neighbour of player posistion node, the current node
+                current_node = self.robber_node
+                is_valid_move = closest_node in self.graph.neighbors(current_node) or closest_node == current_node
+            elif player == "cop":
+
+                # Individual checks for both cop nodes to see if clicked node is one of their neighbours
+                current_node1 = self.cop_nodes[0]
+                current_node2 = self.cop_nodes[1]
+                is_valid_move1 = closest_node in self.graph.neighbors(current_node1) or closest_node == current_node1
+                is_valid_move2 = closest_node in self.graph.neighbors(current_node2) or closest_node == current_node2
+            
+            # Check to see if the clicked node is a valid move for any of the players
+            if is_valid_move or (is_valid_move1 or is_valid_move2):
+                
+                # Update player node as node clicked is a valid move only if its their turn
                 if player == "robber":
                     self.robber_node = closest_node
-                else:
-                    self.cop_node = closest_node
+                    self.robber_moved = True
+                elif player == "cop":
+                    if not self.cop_moved[0] and is_valid_move1:
+                        self.cop_nodes[0] = closest_node
+                        self.cop_moved[0] = True
+                    elif not self.cop_moved[1] and is_valid_move2:
+                        self.cop_nodes[1] = closest_node
+                        self.cop_moved[1] = True
             
-                # Switch to next players turn
-                self.is_robber_turn = not self.is_robber_turn
+                # Check if both cops have made their move
+                both_moved = True
+                for placed in self.cop_moved:
+                    if  not placed:
+                        both_moved = False
 
-                if self.is_robber_turn:
+                # If both cops have moved switch to robbers turn
+                if both_moved:
+                    self.is_robber_turn = not self.is_robber_turn
+                    self.cop_moved = [False, False]
                     self.turn_label.setText("Robber's Turn")
-                else:
+                
+                # If robber has moved switch to cops turn
+                elif self.robber_moved:
+                    self.robber_moved = False
+                    self.is_robber_turn = not self.is_robber_turn
                     self.turn_label.setText("Cop's Turn")
 
         self.display_graph()
