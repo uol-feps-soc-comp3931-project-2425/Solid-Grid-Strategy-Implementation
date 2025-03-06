@@ -60,7 +60,7 @@ class GraphCreator(QWidget):
         layout.addWidget(self.canvas)
 
         # Connect mouse click event
-        self.canvas.mpl_connect("button_press_event", self.on_click)
+        self.mouse_click_cid = self.canvas.mpl_connect("button_press_event", self.on_click)
 
         # Instance variables for storing the graph
         self.graph = None  
@@ -162,7 +162,7 @@ class GraphCreator(QWidget):
             return
 
         # Disconnect the mouse click event
-        self.canvas.mpl_disconnect("button_press_event")
+        self.canvas.mpl_disconnect(self.mouse_click_cid)
 
         self.parent.switch_to_game_window(self.graph, self.pos, self.node_size)
 
@@ -197,7 +197,7 @@ class GameWindow(QWidget):
         layout.addWidget(self.canvas)
 
         # Connect mouse click event
-        self.canvas.mpl_connect("button_press_event", self.on_click)
+        self.mouse_click_cid = self.canvas.mpl_connect("button_press_event", self.on_click)
 
     """Update the sotred graph info."""
     def update_graph(self, graph, pos, node_size):  
@@ -355,6 +355,13 @@ class GameWindow(QWidget):
                     self.turn_label.setText("Cop's Turn")
 
         self.display_graph()
+        self.check_game_over()
+
+    def check_game_over(self):
+        for cop in self.cop_nodes:
+            if cop == self.robber_node:
+                self.turn_label.setText("Game Over, Cops captured the robber")
+                self.canvas.mpl_disconnect(self.mouse_click_cid)
 
 app = QApplication([])
 window = MainApp()
