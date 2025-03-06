@@ -22,7 +22,6 @@ class MainApp(QMainWindow):
     """Switch to the game window."""
     def switch_to_game_window(self, graph, pos, node_size):
         self.game_window.update_graph(graph, pos, node_size)
-        self.game_window.place_cop_and_robber()
         self.game_window.display_graph()
         self.stacked_widget.setCurrentIndex(1)
 
@@ -178,12 +177,13 @@ class GameWindow(QWidget):
         self.node_size = None
         self.cop_node = None
         self.robber_node = None
-        self.is_robber_turn = True
+        self.is_robber_turn = False
+        self.is_placement_phase = True
 
         # Set up layout and canvas
         layout = QVBoxLayout(self)
 
-        self.turn_label = QLabel("Robber's Turn", self)
+        self.turn_label = QLabel("Cop's Placement Phase", self)
         layout.addWidget(self.turn_label)
 
         self.canvas = FigureCanvas(Figure())
@@ -207,30 +207,26 @@ class GameWindow(QWidget):
         nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size, node_shape='s')
 
         # Highlight Legal moves
-        if self.is_robber_turn:
-            legal_moves = list(self.graph.neighbors(self.robber_node))
-            legal_moves.append(self.robber_node)
+        if not self.is_placement_phase:
+            if self.is_robber_turn:
+                legal_moves = list(self.graph.neighbors(self.robber_node))
+                legal_moves.append(self.robber_node)
+            else:
+                legal_moves = list(self.graph.neighbors(self.cop_node))
+                legal_moves.append(self.cop_node)
         else:
-            legal_moves = list(self.graph.neighbors(self.cop_node))
-            legal_moves.append(self.cop_node)
-        
+            legal_moves = list(self.graph.nodes)    
+    
         # Highlight cop and robber nodes through colour and size
-        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.cop_node], node_color="blue", ax=ax, node_size=self.node_size*0.7)
-        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size*0.7)
+        if self.cop_node is not None:
+            nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.cop_node], node_color="blue", ax=ax, node_size=self.node_size*0.7)
+        if self.robber_node is not None:
+            nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size*0.7)
 
         nx.draw_networkx_nodes(self.graph, self.pos, nodelist=legal_moves, node_color="black", ax=ax, node_size=self.node_size*0.2, alpha=0.7)
 
         self.canvas.draw()
-
-    """Place cop and robber on starting posistions"""
-    def place_cop_and_robber(self):
-        # Currently Lowest xy for robber, Highest xy for cop
-        existing_nodes = list(self.graph.nodes)
-
-        self.robber_node = min(existing_nodes, key=lambda k: (self.pos[k][0], self.pos[k][1]))
-
-        self.cop_node = max(existing_nodes, key=lambda k: (self.pos[k][0], self.pos[k][1]))
-
+   
     """Handle mouse click events."""
     def on_click(self, event):
         if event.xdata is None or event.ydata is None:
@@ -261,31 +257,48 @@ class GameWindow(QWidget):
             self.make_move(closest_node, "cop")
 
     """Make a move for the robber or cop"""
-    def make_move(self, closest_node, player):
-        if player == "robber":
-            current_node = self.robber_node
-        elif player == "cop":
-            current_node = self.cop_node
-        else:
-            return
-        
-        # Check if node near mouse click is a neighbour of player posistion node
-        if closest_node in self.graph.neighbors(current_node) or closest_node == current_node:
-
-            # Update player posistion node as click was a valid move
+    def make_move(self, closest_node, player):         
+        if self.is_placement_phase:
+            # Set starting posistion to clicked node
             if player == "robber":
                 self.robber_node = closest_node
             else:
                 self.cop_node = closest_node
-            
+
+            # Switch to next players turn
             self.is_robber_turn = not self.is_robber_turn
 
             if self.is_robber_turn:
-                self.turn_label.setText("Robber's Turn")
+                self.turn_label.setText("Robber's Placement Phase")
             else:
-                self.turn_label.setText("Cop's Turn")
+                self.is_placement_phase = False
+        else:
+
+            # Get the node where the player is currently posistioned 
+            if player == "robber":
+                current_node = self.robber_node
+            elif player == "cop":
+                current_node = self.cop_node
             
-            self.display_graph()
+            # Check if node near mouse click is a neighbour of player posistion node
+            is_valid_move = closest_node in self.graph.neighbors(current_node) or closest_node == current_node
+
+            if is_valid_move:
+                # Update player node as node clicked is a valid move
+                if player == "robber":
+                    self.robber_node = closest_node
+                else:
+                    self.cop_node = closest_node
+            
+                # Switch to next players turn
+                self.is_robber_turn = not self.is_robber_turn
+
+                if self.is_robber_turn:
+                    self.turn_label.setText("Robber's Turn")
+                else:
+                    self.turn_label.setText("Cop's Turn")
+
+        self.display_graph()
 
 app = QApplication([])
 window = MainApp()
