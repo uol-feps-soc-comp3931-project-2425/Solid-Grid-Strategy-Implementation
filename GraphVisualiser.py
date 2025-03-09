@@ -19,11 +19,19 @@ class MainApp(QMainWindow):
         self.game_window = GameWindow(self)
         self.stacked_widget.addWidget(self.game_window)
 
+        self.strategy_window = StrategyWindow(self)
+        self.stacked_widget.addWidget(self.strategy_window)
+
     """Switch to the game window."""
     def switch_to_game_window(self, graph, pos, node_size):
         self.game_window.update_graph(graph, pos, node_size)
         self.game_window.display_graph()
         self.stacked_widget.setCurrentIndex(1)
+
+    def switch_to_strategy_window(self, graph, pos, node_size):
+        self.strategy_window.update_graph(graph, pos, node_size)
+        self.strategy_window.display_graph()
+        self.stacked_widget.setCurrentIndex(2)
 
 class GraphCreator(QWidget):
     def __init__(self, parent):
@@ -50,9 +58,14 @@ class GraphCreator(QWidget):
         self.button.clicked.connect(self.generate_graph)
         layout.addWidget(self.button)
 
-        # Button to submit graph
+        # Button to submit graph - To normal game window
         self.button_submit = QPushButton("Submit", self)
         self.button_submit.clicked.connect(self.submit_graph)
+        layout.addWidget(self.button_submit)
+
+        # Button to submit graph - To normal strategy window
+        self.button_submit = QPushButton("Submit (Vs. Strategy)", self)
+        self.button_submit.clicked.connect(self.submit_graph_strategy)
         layout.addWidget(self.button_submit)
 
         # Matplotlib Figure
@@ -166,6 +179,15 @@ class GraphCreator(QWidget):
 
         self.parent.switch_to_game_window(self.graph, self.pos, self.node_size)
 
+    def submit_graph_strategy(self):
+        if not self.graph:
+            return
+
+        # Disconnect the mouse click event
+        self.canvas.mpl_disconnect(self.mouse_click_cid)
+
+        self.parent.switch_to_strategy_window(self.graph, self.pos, self.node_size)
+
 class GameWindow(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
@@ -199,7 +221,7 @@ class GameWindow(QWidget):
         # Connect mouse click event
         self.mouse_click_cid = self.canvas.mpl_connect("button_press_event", self.on_click)
 
-    """Update the sotred graph info."""
+    """Update the stored graph info."""
     def update_graph(self, graph, pos, node_size):  
         self.graph = graph
         self.pos = pos
@@ -362,6 +384,80 @@ class GameWindow(QWidget):
             if cop == self.robber_node:
                 self.turn_label.setText("Game Over, Cops captured the robber")
                 self.canvas.mpl_disconnect(self.mouse_click_cid)
+
+class StrategyWindow(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+
+        # Initialize graph info
+        self.graph = None
+        self.pos = {}
+        self.node_size = None
+
+        # Player States
+        self.cop_nodes = []
+        self.cop_moved = [False, False]
+        self.robber_node = None
+        self.robber_moved = False
+
+        # Game States
+        self.is_robber_turn = False
+        self.is_placement_phase = True
+     
+        # Set up layout and canvas
+        layout = QVBoxLayout(self)
+
+        self.canvas = FigureCanvas(Figure())
+        layout.addWidget(self.canvas)
+
+        # Connect mouse click event
+        # self.mouse_click_cid = self.canvas.mpl_connect("button_press_event", self.on_click)
+
+
+    """Update the stored graph info."""
+    def update_graph(self, graph, pos, node_size):  
+        self.graph = graph
+        self.pos = pos
+        self.node_size = node_size
+
+    """Display the graph."""
+    def display_graph(self):
+        self.canvas.figure.clear()
+        ax = self.canvas.figure.add_subplot(111)
+
+        # Draw user created graph
+        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size, node_shape='s')
+
+        # Highlight Legal moves
+        if not self.is_placement_phase:
+
+            # Single robber so legal moves only based on single node neighbours
+            if self.is_robber_turn:
+                legal_moves = list(self.graph.neighbors(self.robber_node))
+                legal_moves.append(self.robber_node)
+            # Two cops so legal moves based on two nodes neighbours
+            else:
+                legal_moves=[]
+                for i in range(len(self.cop_nodes)):
+                    if not self.cop_moved[i]:
+                        legal_moves.extend(self.graph.neighbors(self.cop_nodes[i]))
+                        legal_moves.append(self.cop_nodes[i])
+        # In placement phase any node is a legal move unless occupied 
+        else:
+            legal_moves = [node for node in self.graph.nodes if node not in self.cop_nodes]
+    
+        # Highlight cop and robber nodes through colour and size
+        if self.cop_nodes:
+            nx.draw_networkx_nodes(self.graph, self.pos, nodelist=self.cop_nodes, node_color="blue", ax=ax, node_size=self.node_size*0.7)
+        if self.robber_node is not None:
+            nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size*0.7)
+
+        # Highlight legal moves
+        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=legal_moves, node_color="black", ax=ax, node_size=self.node_size*0.2, alpha=0.7)
+
+        self.canvas.draw()
+
 
 app = QApplication([])
 window = MainApp()
