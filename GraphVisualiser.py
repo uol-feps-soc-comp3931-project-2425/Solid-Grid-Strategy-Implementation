@@ -380,6 +380,7 @@ class GameWindow(QWidget):
         self.display_graph()
         self.check_game_over()
 
+    """Check for if cop has captured robber"""
     def check_game_over(self):
         for cop in self.cop_nodes:
             if cop == self.robber_node:
@@ -403,6 +404,8 @@ class StrategyWindow(QWidget):
         self.cop2_pointer = 1
         self.gaurding = [False, False]
         self.target_column_path = []
+        self.target_node = None
+        self.target_path = []
         self.cop1_gaurded = False
         # Game States
         self.is_robber_turn = False
@@ -509,12 +512,14 @@ class StrategyWindow(QWidget):
         self.display_graph()
         self.check_game_over()
         
+    """Check for if cop has captured robber"""
     def check_game_over(self):
         for cop in self.cop_nodes:
             if cop == self.robber_node:
                 self.turn_label.setText("Game Over, Cops captured the robber")
                 self.canvas.mpl_disconnect(self.mouse_click_cid)
 
+    """Handles logic for deciding cops moves to implement strategy of capturing robber"""
     def cop_strategy(self):
         if self.is_placement_phase:
             if not self.is_robber_turn:
@@ -565,53 +570,74 @@ class StrategyWindow(QWidget):
             robber_row = self.robber_node[0]
             cop1_column = self.cop_nodes[self.cop1_pointer][1]
             cop1_row = self.cop_nodes[self.cop1_pointer][0]
-            cop1 = self.cop_nodes[self.cop1_pointer]
+
             # Cop 1 Move
+            cop1 = self.cop_nodes[self.cop1_pointer]
             # Check if C1 is on the target column path
             if(cop1 in self.target_column_path):
 
-                # Since C1 is on column path, Check if gaurded based on robber posistion 
-                if (abs(cop1_column - robber_column) >= abs(cop1_row - robber_row)):
+                # Since Cop 1 is on column path, Check if gaurded based on robber posistion 
+                # Find the closest node on target path to robber, compare distance from cop and robber to that node
+                robber_target, robber_target_path = self.shortest_path_to_column_path(self.robber_node, self.target_column_path)
+                cop_to_robber_target = nx.shortest_path_length(self.graph, self.cop_nodes[self.cop1_pointer], robber_target)
+
+                # If Cop 1 can get to that node quicker than the column path is gaureded
+                if (cop_to_robber_target < len(robber_target_path)):
                     self.cop1_gaurded = True
 
-                # If robber distance to column is shorter then the column is not gaurded so cop must move towards robbers row
+                # If Cop 1 doesn't gaurd column at current posistion must move closer node closer to robber on the column path
                 else:
-                    if(cop1_row > robber_row):
-                        if ((cop1_row-1, cop1_column) in self.graph.nodes):
-                            self.cop_nodes[self.cop1_pointer] = (cop1_row-1, cop1_column)
-                    elif(cop1_row < robber_row):
-                        if ((cop1_row+1, cop1_column) in self.graph.nodes):
-                            self.cop_nodes[self.cop1_pointer] = (cop1_row+1, cop1_column)
-
-            # If not on target column path make move towards it
+                    self.gaurd_column_path(self.cop1_pointer)
+        
+            # If Cop 1 not on target column path make move towards it
             else:
-                if(cop1_column < self.target_column_path[0][1]):
-                    self.cop_nodes[self.cop1_pointer] = (cop1_row, cop1_column+1)
-                elif(cop1_column > self.target_column_path[0][1]):
-                    self.cop_nodes[self.cop1_pointer] = (cop1_row, cop1_column-1)
+
+                # Check if we have a target node to aim for on the target column path
+                if self.target_node not in self.target_column_path:
+
+                    # target node on target column path and path from cop1 to that target node
+                    self.target_node, self.target_path = self.shortest_path_to_column_path(cop1, self.target_column_path)
+    
+                # Find Cop 1 on the target path and interate it to follow the path to the target node
+                for i in range(0, len(self.target_path)):
+                    if self.cop_nodes[self.cop1_pointer] == self.target_path[i]:
+                        self.cop_nodes[self.cop1_pointer] = self.target_path[i+1]
+                        break
 
             # Cop 2 Move
             cop2_column = self.cop_nodes[self.cop2_pointer][1]
             cop2_row = self.cop_nodes[self.cop2_pointer][0]
-            if not (abs(cop2_column - robber_column) >= abs(cop2_row - robber_row)):
-                if(cop2_row > robber_row):
-                    if ((cop2_row-1, cop2_column) in self.graph.nodes):
-                        self.cop_nodes[self.cop2_pointer] = (cop2_row-1, cop2_column)
-                elif(cop2_row < robber_row):
-                    if ((cop2_row+1, cop2_column) in self.graph.nodes):
-                        self.cop_nodes[self.cop2_pointer] = (cop2_row+1, cop2_column)
-            
-            # Swap roles
+            cop2_column_path = self.find_column_path(self.cop_nodes[self.cop2_pointer])
+            robber_target, robber_target_path = self.shortest_path_to_column_path(self.robber_node, cop2_column_path)
+            cop_to_robber_target = nx.shortest_path_length(self.graph, self.cop_nodes[self.cop2_pointer], robber_target)
+
+            # Check if Cop 2 based on their current posistion still gaurds the column path they are on
+            if not (cop_to_robber_target < len(robber_target_path)):
+                self.gaurd_column_path(self.cop2_pointer)
+
+            # Cop 1 and Cop 2 swap roles if Cop 1 sucessfully gaurds their column path, as it frees up Cop 2 to find a new column path to gaurd
             if self.cop1_gaurded:
-                # Set new target column path
+                # Find Connected Components after G-P and of them the connected component the robber is in
+                graph_modified = self.graph.copy()
+                graph_modified.remove_nodes_from(self.target_column_path)
+                components = list(nx.connected_components(graph_modified))
+                for component in components:
+                    if self.robber_node in component:
+                        robber_component = component
+
+                # Check for nodes which reside on the adjacent column path in the robber's component
                 for node in self.target_column_path:
                     y, x = node
-                    test_node = (y, x-1) 
-                    if(test_node in self.graph.nodes):
-                        if ((node, test_node) in self.graph.edges):
-                            break
+                    test_nodes = [(y, x-1), (y, x+1)]
+                    for test_node in test_nodes:
+                        if(test_node in self.graph.nodes):
+                            if ((node, test_node) in self.graph.edges):
+                                if test_node in robber_component:
+                                    break
                 self.target_column_path = self.find_column_path(test_node)
-                # Swap the c1 and c2 pointers
+
+                print(self.target_column_path)
+                # Swap the Cop 1 and Cop 2 pointers
                 temp = self.cop1_pointer
                 self.cop1_pointer = self.cop2_pointer
                 self.cop2_pointer = temp
@@ -623,44 +649,103 @@ class StrategyWindow(QWidget):
         self.display_graph()
         self.check_game_over()
 
+    """Finds a column path that a given node resides in"""
     def find_column_path(self, node):
         # Get the y and x of the node
         y, x = node
 
         # Search up, form a list of connected nodes above it
         upper_list = []
+
+        # All nodes in the column above the given node
         upper_nodes = [n for n in self.graph.nodes if n[1] == x and n[0] < y]
         upper_nodes.sort(key=lambda n: n[0], reverse=True)
         if upper_nodes:
+
+            # Checks if node above is connected meaning its in column path
             if( (node, upper_nodes[0]) in self.graph.edges):
                 upper_list.append(upper_nodes[0])
 
+                # Continues up the column adding connedcted nodes to column path
                 for i in range(1, len(upper_nodes)):
                     if( (upper_nodes[i-1], upper_nodes[i]) in self.graph.edges):
                         upper_list.append(upper_nodes[i])
+                    
+                    # Once a disconnected node is found an end point of column path is found so break
                     else:
                         break
 
         # Search down, form a list of connected node below it
         lower_list = []
+
+        # All nodes in the column below the given node
         lower_nodes = [n for n in self.graph.nodes if n[1] == x and n[0] > y]
         lower_nodes.sort(key=lambda n: n[0])
         if lower_nodes:
+
+            # Checks if node below is connected meaning its in column path
             if( (node, lower_nodes[0]) in self.graph.edges):
                 lower_list.append(lower_nodes[0])
 
+                # Continues down the column adding connedcted nodes to column path
                 for i in range(1, len(lower_nodes)):
                     if( (lower_nodes[i-1], lower_nodes[i]) in self.graph.edges):
                         lower_list.append(lower_nodes[i])
+
+                    # Once a disconnected node is found an end point of column path is found so break
                     else:
                         break
 
-        # Combine list that is our column path
+        # Combine lists to form the complete column path
         column_path=[]
         column_path.extend(upper_list)
         column_path.append(node)
         column_path.extend(lower_list)
         return column_path
+
+    """Finds the cloest node in a column path to a given node and the path of ndoes to it"""
+    def shortest_path_to_column_path(self, node, column_path):
+        # Defaults the cloest node and shortest path to be first node in column path
+        shortest_path = nx.shortest_path_length(self.graph, node, column_path[0])
+        target_node = column_path[0]
+        target_path = nx.shortest_path(self.graph, node, target_node)
+
+        # Loops through to check rest of column path
+        for i in range(1, len(column_path)):
+            
+            # If current node has a shorter path, it becomes the target node and shortest path
+            test_path = nx.shortest_path_length(self.graph, node, column_path[i])
+            if(shortest_path > test_path):
+                shortest_path = test_path
+                target_node = column_path[i]
+                target_path = nx.shortest_path(self.graph, node, target_node)
+        
+        return target_node, target_path
+
+    """Moves cop up or down to be closer to robber's row"""
+    def gaurd_column_path(self, cop_pointer):
+        # Given cop information
+        cop_column = self.cop_nodes[cop_pointer][1]
+        cop_row = self.cop_nodes[cop_pointer][0]
+
+        # Robber information
+        robber_row = self.robber_node[0]
+
+        # Check if robber is above cop
+        if(cop_row > robber_row):
+
+            # Move towards them if possible move exists
+            next_move = (cop_row-1, cop_column)
+            if (next_move in self.graph.nodes):
+                self.cop_nodes[cop_pointer] = next_move 
+        
+        # Check if robber is below cop
+        elif(cop_row < robber_row):
+
+            # Move towards them if possible move exists
+            next_move  = (cop_row+1, cop_column)
+            if (next_move in self.graph.nodes):
+                self.cop_nodes[cop_pointer] = next_move 
 
 
 app = QApplication([])
