@@ -566,11 +566,6 @@ class StrategyWindow(QWidget):
             # - If C1 gaurds the target column path then C1 and C2 swap roles
             # - Set new target column path for new C1
 
-            robber_column = self.robber_node[1]
-            robber_row = self.robber_node[0]
-            cop1_column = self.cop_nodes[self.cop1_pointer][1]
-            cop1_row = self.cop_nodes[self.cop1_pointer][0]
-
             # Cop 1 Move
             cop1 = self.cop_nodes[self.cop1_pointer]
             # Check if C1 is on the target column path
