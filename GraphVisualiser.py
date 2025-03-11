@@ -633,10 +633,8 @@ class StrategyWindow(QWidget):
                         if(test_node in self.graph.nodes):
                             if ((node, test_node) in self.graph.edges):
                                 if test_node in robber_component:
-                                    break
-                self.target_column_path = self.find_column_path(test_node)
-
-                print(self.target_column_path)
+                                    adjacent_path_node = test_node
+                self.target_column_path = self.find_column_path(adjacent_path_node)
                 # Swap the Cop 1 and Cop 2 pointers
                 temp = self.cop1_pointer
                 self.cop1_pointer = self.cop2_pointer
