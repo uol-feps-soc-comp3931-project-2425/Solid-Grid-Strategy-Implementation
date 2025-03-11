@@ -31,8 +31,9 @@ class MainApp(QMainWindow):
     def switch_to_strategy_window(self, graph, pos, node_size):
         self.strategy_window.update_graph(graph, pos, node_size)
         self.strategy_window.display_graph()
+        self.strategy_window.cop_strategy()
         self.stacked_widget.setCurrentIndex(2)
-
+        
 class GraphCreator(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
@@ -397,10 +398,12 @@ class StrategyWindow(QWidget):
 
         # Player States
         self.cop_nodes = []
-        self.cop_moved = [False, False]
         self.robber_node = None
-        self.robber_moved = False
-
+        self.cop1_pointer = 0
+        self.cop2_pointer = 1
+        self.gaurding = [False, False]
+        self.target_column_path = []
+        self.cop1_gaurded = False
         # Game States
         self.is_robber_turn = False
         self.is_placement_phase = True
@@ -408,12 +411,14 @@ class StrategyWindow(QWidget):
         # Set up layout and canvas
         layout = QVBoxLayout(self)
 
+        self.turn_label = QLabel("Cop's Placement Phase", self)
+        layout.addWidget(self.turn_label)
+
         self.canvas = FigureCanvas(Figure())
         layout.addWidget(self.canvas)
 
         # Connect mouse click event
-        # self.mouse_click_cid = self.canvas.mpl_connect("button_press_event", self.on_click)
-
+        self.mouse_click_cid = self.canvas.mpl_connect("button_press_event", self.on_click)
 
     """Update the stored graph info."""
     def update_graph(self, graph, pos, node_size):  
@@ -436,13 +441,8 @@ class StrategyWindow(QWidget):
             if self.is_robber_turn:
                 legal_moves = list(self.graph.neighbors(self.robber_node))
                 legal_moves.append(self.robber_node)
-            # Two cops so legal moves based on two nodes neighbours
             else:
                 legal_moves=[]
-                for i in range(len(self.cop_nodes)):
-                    if not self.cop_moved[i]:
-                        legal_moves.extend(self.graph.neighbors(self.cop_nodes[i]))
-                        legal_moves.append(self.cop_nodes[i])
         # In placement phase any node is a legal move unless occupied 
         else:
             legal_moves = [node for node in self.graph.nodes if node not in self.cop_nodes]
@@ -457,6 +457,210 @@ class StrategyWindow(QWidget):
         nx.draw_networkx_nodes(self.graph, self.pos, nodelist=legal_moves, node_color="black", ax=ax, node_size=self.node_size*0.2, alpha=0.7)
 
         self.canvas.draw()
+
+    """Handle mouse click events."""
+    def on_click(self, event):
+        if event.xdata is None or event.ydata is None:
+            return  # Ignore clicks outside the plot
+
+        # Define a threshold distance to decide on which clicks to count
+        click_threshold = 0.25
+
+        # Find the nearest node
+        closest_node, min_distance = None, float('inf')
+        for node in self.graph.nodes:
+            dist = (self.pos[node][0] - event.xdata) ** 2 + (self.pos[node][1] - event.ydata) ** 2
+            if dist < min_distance:
+                min_distance = dist
+                closest_node = node
+
+        # Convert squared distance to actual distance for comparison
+        min_distance = min_distance ** 0.5  
+
+        # Only proceed if the click is within the threshold distance
+        if min_distance > click_threshold:
+            return
+
+        # Check if the clicked node is a valid move
+        if self.is_robber_turn:
+            self.make_move(closest_node)
+
+    """Make a move for the robber or cop"""
+    def make_move(self, closest_node):         
+        if self.is_placement_phase:
+            self.robber_node = closest_node
+            self.is_robber_turn = not self.is_robber_turn
+            self.is_placement_phase = False
+            self.cop_strategy()
+        else:
+            # Check if node near mouse click is a neighbour of player posistion node, the current node
+            current_node = self.robber_node
+            is_valid_move = closest_node in self.graph.neighbors(current_node) or closest_node == current_node
+            
+            # Check to see if the clicked node is a valid move for any of the players
+            if is_valid_move:
+                
+                # Update player node as node clicked is a valid move only if its their turn
+                self.robber_node = closest_node
+                self.is_robber_turn = not self.is_robber_turn
+                self.turn_label.setText("Cop's Turn")
+                self.cop_strategy()
+
+        self.display_graph()
+        self.check_game_over()
+        
+    def check_game_over(self):
+        for cop in self.cop_nodes:
+            if cop == self.robber_node:
+                self.turn_label.setText("Game Over, Cops captured the robber")
+                self.canvas.mpl_disconnect(self.mouse_click_cid)
+
+    def cop_strategy(self):
+        if self.is_placement_phase:
+            if not self.is_robber_turn:
+                # Place C1 in a right most column path in its centre
+            
+                # Find the column furthest to the right of the graph
+                rightmost_column = max(x for (y, x) in self.graph.nodes)
+
+                # Collect all nodes from that column in a sorted list
+                rightmost_nodes = [(y, x) for (y, x) in self.graph.nodes if x == rightmost_column]
+
+                # Find far right node in the highest row, which has the lowest y
+                top_right_node = min(rightmost_nodes, key=lambda node: node[0])
+                
+                c1_column_path = self.find_column_path(top_right_node)
+                
+                # Place C1 in the middle of column path
+                mid_index = len(c1_column_path) // 2
+                self.cop_nodes.append(c1_column_path[mid_index])
+
+                # Place C2 in the adjacent column path to C1
+                # Find a node in the adjacent column which has an edge to C1 column path
+                for node in c1_column_path:
+                    y, x = node
+                    test_node = (y, x-1) 
+                    if(test_node in self.graph.nodes):
+                        if ((node, test_node) in self.graph.edges):
+                            c2_column_path = self.find_column_path(test_node)
+                            break
+
+                mid_index = len(c2_column_path) // 2
+                self.cop_nodes.append(c2_column_path[mid_index])
+
+                self.target_column_path = c1_column_path
+                self.gaurding = [False, True]
+                self.turn_label.setText("Robber's Placement Phase")
+                self.is_robber_turn = not self.is_robber_turn
+        else:
+            # Check if C1 Gaurds the target column path
+            # - If C1 gaurds then no move needs to be played
+            # - If C1 doesn't gaurd the column path then moves must be made to gaurd it
+            # C2 can remain to make moves to gaurd the column path they are on 
+            # Once both moves are made
+            # - If C1 gaurds the target column path then C1 and C2 swap roles
+            # - Set new target column path for new C1
+
+            robber_column = self.robber_node[1]
+            robber_row = self.robber_node[0]
+            cop1_column = self.cop_nodes[self.cop1_pointer][1]
+            cop1_row = self.cop_nodes[self.cop1_pointer][0]
+            cop1 = self.cop_nodes[self.cop1_pointer]
+            # Cop 1 Move
+            # Check if C1 is on the target column path
+            if(cop1 in self.target_column_path):
+
+                # Since C1 is on column path, Check if gaurded based on robber posistion 
+                if (abs(cop1_column - robber_column) >= abs(cop1_row - robber_row)):
+                    self.cop1_gaurded = True
+
+                # If robber distance to column is shorter then the column is not gaurded so cop must move towards robbers row
+                else:
+                    if(cop1_row > robber_row):
+                        if ((cop1_row-1, cop1_column) in self.graph.nodes):
+                            self.cop_nodes[self.cop1_pointer] = (cop1_row-1, cop1_column)
+                    elif(cop1_row < robber_row):
+                        if ((cop1_row+1, cop1_column) in self.graph.nodes):
+                            self.cop_nodes[self.cop1_pointer] = (cop1_row+1, cop1_column)
+
+            # If not on target column path make move towards it
+            else:
+                if(cop1_column < self.target_column_path[0][1]):
+                    self.cop_nodes[self.cop1_pointer] = (cop1_row, cop1_column+1)
+                elif(cop1_column > self.target_column_path[0][1]):
+                    self.cop_nodes[self.cop1_pointer] = (cop1_row, cop1_column-1)
+
+            # Cop 2 Move
+            cop2_column = self.cop_nodes[self.cop2_pointer][1]
+            cop2_row = self.cop_nodes[self.cop2_pointer][0]
+            if not (abs(cop2_column - robber_column) >= abs(cop2_row - robber_row)):
+                if(cop2_row > robber_row):
+                    if ((cop2_row-1, cop2_column) in self.graph.nodes):
+                        self.cop_nodes[self.cop2_pointer] = (cop2_row-1, cop2_column)
+                elif(cop2_row < robber_row):
+                    if ((cop2_row+1, cop2_column) in self.graph.nodes):
+                        self.cop_nodes[self.cop2_pointer] = (cop2_row+1, cop2_column)
+            
+            # Swap roles
+            if self.cop1_gaurded:
+                # Set new target column path
+                for node in self.target_column_path:
+                    y, x = node
+                    test_node = (y, x-1) 
+                    if(test_node in self.graph.nodes):
+                        if ((node, test_node) in self.graph.edges):
+                            break
+                self.target_column_path = self.find_column_path(test_node)
+                # Swap the c1 and c2 pointers
+                temp = self.cop1_pointer
+                self.cop1_pointer = self.cop2_pointer
+                self.cop2_pointer = temp
+                self.cop1_gaurded = False
+
+            self.is_robber_turn = not self.is_robber_turn
+            self.turn_label.setText("Robber's Turn")
+
+        self.display_graph()
+        self.check_game_over()
+
+    def find_column_path(self, node):
+        # Get the y and x of the node
+        y, x = node
+
+        # Search up, form a list of connected nodes above it
+        upper_list = []
+        upper_nodes = [n for n in self.graph.nodes if n[1] == x and n[0] < y]
+        upper_nodes.sort(key=lambda n: n[0], reverse=True)
+        if upper_nodes:
+            if( (node, upper_nodes[0]) in self.graph.edges):
+                upper_list.append(upper_nodes[0])
+
+                for i in range(1, len(upper_nodes)):
+                    if( (upper_nodes[i-1], upper_nodes[i]) in self.graph.edges):
+                        upper_list.append(upper_nodes[i])
+                    else:
+                        break
+
+        # Search down, form a list of connected node below it
+        lower_list = []
+        lower_nodes = [n for n in self.graph.nodes if n[1] == x and n[0] > y]
+        lower_nodes.sort(key=lambda n: n[0])
+        if lower_nodes:
+            if( (node, lower_nodes[0]) in self.graph.edges):
+                lower_list.append(lower_nodes[0])
+
+                for i in range(1, len(lower_nodes)):
+                    if( (lower_nodes[i-1], lower_nodes[i]) in self.graph.edges):
+                        lower_list.append(lower_nodes[i])
+                    else:
+                        break
+
+        # Combine list that is our column path
+        column_path=[]
+        column_path.extend(upper_list)
+        column_path.append(node)
+        column_path.extend(lower_list)
+        return column_path
 
 
 app = QApplication([])
