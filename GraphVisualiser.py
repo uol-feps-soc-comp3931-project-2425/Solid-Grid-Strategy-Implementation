@@ -421,6 +421,7 @@ class StrategyWindow(QWidget):
         self.graph = None
         self.pos = {}
         self.node_size = None
+        self.highlight_moves = True
 
         # Player States
         self.cop_nodes = []
@@ -463,18 +464,22 @@ class StrategyWindow(QWidget):
         nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size, node_shape='s')
 
         # Highlight Legal moves
-        if not self.is_placement_phase:
+        if self.highlight_moves:
+            if not self.is_placement_phase:
 
-            # Single robber so legal moves only based on single node neighbours
-            if self.is_robber_turn:
-                legal_moves = list(self.graph.neighbors(self.robber_node))
-                legal_moves.append(self.robber_node)
+                # Single robber so legal moves only based on single node neighbours
+                if self.is_robber_turn:
+                    legal_moves = list(self.graph.neighbors(self.robber_node))
+                    legal_moves.append(self.robber_node)
+                else:
+                    legal_moves=[]
+            # In placement phase any node is a legal move unless occupied 
             else:
-                legal_moves=[]
-        # In placement phase any node is a legal move unless occupied 
+                legal_moves = [node for node in self.graph.nodes if node not in self.cop_nodes]
         else:
-            legal_moves = [node for node in self.graph.nodes if node not in self.cop_nodes]
-    
+            legal_moves=[]
+        
+        
         # Highlight cop and robber nodes through colour and size
         if self.cop_nodes:
             nx.draw_networkx_nodes(self.graph, self.pos, nodelist=self.cop_nodes, node_color="blue", ax=ax, node_size=self.node_size*0.7)
@@ -765,6 +770,7 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.graph = None
         self.pos = {}
         self.node_size = None
+        self.highlight_moves = False
 
         # Player States
         self.cop_nodes = []
@@ -831,7 +837,7 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.turn_label.setText("Cop's Turn")
         self.display_graph()
         self.check_game_over()
-        QTimer.singleShot(250, self.auto_cop_strategy)
+        QTimer.singleShot(50, self.auto_cop_strategy)
 
     """Handles logic for deciding cops moves to implement strategy of capturing robber"""
     def auto_cop_strategy(self):
@@ -953,7 +959,7 @@ class AutomatedStrategyWindow(StrategyWindow):
                 self.turn_label.setText("Robber's Turn")
                 self.display_graph()
                 self.check_game_over()
-                QTimer.singleShot(250, self.robber_strategy)
+                QTimer.singleShot(50, self.robber_strategy)
             
     """Check for if cop has captured robber"""
     def check_game_over(self):
