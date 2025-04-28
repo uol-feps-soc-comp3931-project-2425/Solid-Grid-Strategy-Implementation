@@ -22,6 +22,9 @@ class MainApp(QMainWindow):
         self.strategy_window = StrategyWindow(self)
         self.stacked_widget.addWidget(self.strategy_window)
 
+        self.auto_strategy_window = AutomatedStrategyWindow(self)
+        self.stacked_widget.addWidget(self.auto_strategy_window)
+
     """Switch to the game window."""
     def switch_to_game_window(self, graph, pos, node_size):
         self.game_window.update_graph(graph, pos, node_size)
@@ -33,6 +36,12 @@ class MainApp(QMainWindow):
         self.strategy_window.display_graph()
         self.strategy_window.cop_strategy()
         self.stacked_widget.setCurrentIndex(2)
+    
+    def switch_to_auto_strategy_window(self, graph, pos, node_size):
+        self.auto_strategy_window.update_graph(graph, pos, node_size)
+        self.auto_strategy_window.display_graph()
+        self.auto_strategy_window.cop_strategy()
+        self.stacked_widget.setCurrentIndex(3)
         
 class GraphCreator(QWidget):
     def __init__(self, parent):
@@ -67,6 +76,11 @@ class GraphCreator(QWidget):
         # Button to submit graph - To normal strategy window
         self.button_submit = QPushButton("Submit (Vs. Strategy)", self)
         self.button_submit.clicked.connect(self.submit_graph_strategy)
+        layout.addWidget(self.button_submit)
+
+        # Button to submit graph - To automated strategy window
+        self.button_submit = QPushButton("Submit (Vs. Strategy (auto))", self)
+        self.button_submit.clicked.connect(self.submit_graph_auto_strategy)
         layout.addWidget(self.button_submit)
 
         # Matplotlib Figure
@@ -188,6 +202,15 @@ class GraphCreator(QWidget):
         self.canvas.mpl_disconnect(self.mouse_click_cid)
 
         self.parent.switch_to_strategy_window(self.graph, self.pos, self.node_size)
+    
+    def submit_graph_auto_strategy(self):
+        if not self.graph:
+            return
+
+        # Disconnect the mouse click event
+        self.canvas.mpl_disconnect(self.mouse_click_cid)
+
+        self.parent.switch_to_auto_strategy_window(self.graph, self.pos, self.node_size)
 
 class GameWindow(QWidget):
     def __init__(self, parent):
@@ -402,11 +425,11 @@ class StrategyWindow(QWidget):
         self.robber_node = None
         self.cop1_pointer = 0
         self.cop2_pointer = 1
-        self.gaurding = [False, False]
+        self.guarding = [False, False]
         self.target_column_path = []
         self.target_node = None
         self.target_path = []
-        self.cop1_gaurded = False
+        self.cop1_guarded = False
         # Game States
         self.is_robber_turn = False
         self.is_placement_phase = True
@@ -554,35 +577,27 @@ class StrategyWindow(QWidget):
                 self.cop_nodes.append(c2_column_path[mid_index])
 
                 self.target_column_path = c1_column_path
-                self.gaurding = [False, True]
+                self.guarding = [False, True]
                 self.turn_label.setText("Robber's Placement Phase")
                 self.is_robber_turn = not self.is_robber_turn
         else:
-            # Check if C1 Gaurds the target column path
-            # - If C1 gaurds then no move needs to be played
-            # - If C1 doesn't gaurd the column path then moves must be made to gaurd it
-            # C2 can remain to make moves to gaurd the column path they are on 
-            # Once both moves are made
-            # - If C1 gaurds the target column path then C1 and C2 swap roles
-            # - Set new target column path for new C1
-
             # Cop 1 Move
             cop1 = self.cop_nodes[self.cop1_pointer]
             # Check if C1 is on the target column path
             if(cop1 in self.target_column_path):
 
-                # Since Cop 1 is on column path, Check if gaurded based on robber posistion 
+                # Since Cop 1 is on column path, Check if guarded based on robber posistion 
                 # Find the closest node on target path to robber, compare distance from cop and robber to that node
                 robber_target, robber_target_path = self.shortest_path_to_column_path(self.robber_node, self.target_column_path)
                 cop_to_robber_target = nx.shortest_path_length(self.graph, self.cop_nodes[self.cop1_pointer], robber_target)
 
                 # If Cop 1 can get to that node quicker than the column path is gaureded
                 if (cop_to_robber_target < len(robber_target_path)):
-                    self.cop1_gaurded = True
+                    self.cop1_guarded = True
 
-                # If Cop 1 doesn't gaurd column at current posistion must move closer node closer to robber on the column path
+                # If Cop 1 doesn't guard column at current posistion must move closer node closer to robber on the column path
                 else:
-                    self.gaurd_column_path(self.cop1_pointer)
+                    self.guard_column_path(self.cop1_pointer)
         
             # If Cop 1 not on target column path make move towards it
             else:
@@ -606,12 +621,12 @@ class StrategyWindow(QWidget):
             robber_target, robber_target_path = self.shortest_path_to_column_path(self.robber_node, cop2_column_path)
             cop_to_robber_target = nx.shortest_path_length(self.graph, self.cop_nodes[self.cop2_pointer], robber_target)
 
-            # Check if Cop 2 based on their current posistion still gaurds the column path they are on
+            # Check if Cop 2 based on their current posistion still guards the column path they are on
             if not (cop_to_robber_target < len(robber_target_path)):
-                self.gaurd_column_path(self.cop2_pointer)
+                self.guard_column_path(self.cop2_pointer)
 
-            # Cop 1 and Cop 2 swap roles if Cop 1 sucessfully gaurds their column path, as it frees up Cop 2 to find a new column path to gaurd
-            if self.cop1_gaurded:
+            # Cop 1 and Cop 2 swap roles if Cop 1 sucessfully guards their column path, as it frees up Cop 2 to find a new column path to guard
+            if self.cop1_guarded:
                 # Find Connected Components after G-P and of them the connected component the robber is in
                 graph_modified = self.graph.copy()
                 graph_modified.remove_nodes_from(self.target_column_path)
@@ -634,7 +649,7 @@ class StrategyWindow(QWidget):
                 temp = self.cop1_pointer
                 self.cop1_pointer = self.cop2_pointer
                 self.cop2_pointer = temp
-                self.cop1_gaurded = False
+                self.cop1_guarded = False
 
             self.is_robber_turn = not self.is_robber_turn
             self.turn_label.setText("Robber's Turn")
@@ -716,7 +731,7 @@ class StrategyWindow(QWidget):
         return target_node, target_path
 
     """Moves cop up or down to be closer to robber's row"""
-    def gaurd_column_path(self, cop_pointer):
+    def guard_column_path(self, cop_pointer):
         # Given cop information
         cop_column = self.cop_nodes[cop_pointer][1]
         cop_row = self.cop_nodes[cop_pointer][0]
@@ -739,6 +754,45 @@ class StrategyWindow(QWidget):
             next_move  = (cop_row+1, cop_column)
             if (next_move in self.graph.nodes):
                 self.cop_nodes[cop_pointer] = next_move 
+
+class AutomatedStrategyWindow(StrategyWindow):
+    def __init__(self, parent):
+        super().__init__(parent)
+
+         # Initialize graph info
+        self.graph = None
+        self.pos = {}
+        self.node_size = None
+
+        # Player States
+        self.cop_nodes = []
+        self.robber_node = None
+        self.cop1_pointer = 0
+        self.cop2_pointer = 1
+        self.guarding = [False, False]
+        self.target_column_path = []
+        self.target_node = None
+        self.target_path = []
+        self.cop1_guarded = False
+        # Game States
+        self.is_robber_turn = False
+        self.is_placement_phase = True
+     
+        # Clear old layout
+        old_layout = self.layout()  # Get the existing layout
+        if old_layout is not None:
+            QWidget().setLayout(old_layout)
+
+        # Set up layout and canvas
+        layout = QVBoxLayout(self)
+
+        self.turn_label = QLabel("Cop's Placement Phase", self)
+        layout.addWidget(self.turn_label)
+
+        self.canvas = FigureCanvas(Figure())
+        layout.addWidget(self.canvas)
+
+
 
 
 app = QApplication([])
