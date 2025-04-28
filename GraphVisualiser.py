@@ -572,6 +572,7 @@ class StrategyWindow(QWidget):
 
                 # Place C2 in the adjacent column path to C1
                 # Find a node in the adjacent column which has an edge to C1 column path
+                c2_column_path = c1_column_path
                 for node in c1_column_path:
                     y, x = node
                     test_node = (y, x-1) 
@@ -643,6 +644,7 @@ class StrategyWindow(QWidget):
                         robber_component = component
 
                 # Check for nodes which reside on the adjacent column path in the robber's component
+                adjacent_path_node = None
                 for node in self.target_column_path:
                     y, x = node
                     test_nodes = [(y, x-1), (y, x+1)]
@@ -651,7 +653,8 @@ class StrategyWindow(QWidget):
                             if ((node, test_node) in self.graph.edges):
                                 if test_node in robber_component:
                                     adjacent_path_node = test_node
-                self.target_column_path = self.find_column_path(adjacent_path_node)
+                if adjacent_path_node:
+                    self.target_column_path = self.find_column_path(adjacent_path_node)
                 # Swap the Cop 1 and Cop 2 pointers
                 temp = self.cop1_pointer
                 self.cop1_pointer = self.cop2_pointer
@@ -862,6 +865,7 @@ class AutomatedStrategyWindow(StrategyWindow):
 
                 # Place C2 in the adjacent column path to C1
                 # Find a node in the adjacent column which has an edge to C1 column path
+                c2_column_path = c1_column_path
                 for node in c1_column_path:
                     y, x = node
                     test_node = (y, x-1) 
@@ -938,6 +942,7 @@ class AutomatedStrategyWindow(StrategyWindow):
                             robber_component = component
 
                     # Check for nodes which reside on the adjacent column path in the robber's component
+                    adjacent_path_node = None
                     for node in self.target_column_path:
                         y, x = node
                         test_nodes = [(y, x-1), (y, x+1)]
