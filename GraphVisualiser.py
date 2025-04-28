@@ -71,7 +71,7 @@ class GraphCreator(QWidget):
         layout.addWidget(self.button)
 
         # Button to submit graph - To normal game window
-        self.button_submit = QPushButton("Submit", self)
+        self.button_submit = QPushButton("Submit (Player Vs. Player)", self)
         self.button_submit.clicked.connect(self.submit_graph)
         layout.addWidget(self.button_submit)
 
@@ -813,6 +813,7 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.canvas = FigureCanvas(Figure())
         layout.addWidget(self.canvas)
     
+    """Handles the start of the automated game"""
     def automation(self):
         self.robber_strategy()
         self.button_submit.setParent(None)  
