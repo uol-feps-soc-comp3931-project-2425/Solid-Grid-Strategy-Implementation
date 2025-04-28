@@ -1,7 +1,9 @@
 from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QLineEdit, QPushButton, QLabel, QStackedWidget
+from PyQt5.QtCore import QTimer
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import networkx as nx
+import random
 
 class MainApp(QMainWindow):
     def __init__(self):
@@ -775,6 +777,7 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.target_path = []
         self.cop1_guarded = False
         # Game States
+        self.is_game_over = False
         self.is_robber_turn = False
         self.is_placement_phase = True
      
@@ -789,9 +792,175 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.turn_label = QLabel("Cop's Placement Phase", self)
         layout.addWidget(self.turn_label)
 
+        self.turn_count = 0 
+        self.turn_count_label = QLabel(f"Turn: {self.turn_count}", self)
+        layout.addWidget(self.turn_count_label)
+
+        # Button to start automation
+        self.button_submit = QPushButton("Start", self)
+        self.button_submit.clicked.connect(self.automation)
+        layout.addWidget(self.button_submit)
+
         self.canvas = FigureCanvas(Figure())
         layout.addWidget(self.canvas)
+    
+    def automation(self):
+        self.robber_strategy()
+        self.button_submit.setParent(None)  
+        self.button_submit.deleteLater() 
 
+    """Handles randomized movement for robber"""
+    def robber_strategy(self):
+        if self.is_placement_phase:
+            if not self.is_game_over:
+                avaible_nodes = set(self.graph.nodes()) - set(self.cop_nodes)
+                random_node = random.choice(list(avaible_nodes))
+                self.robber_node = random_node
+                self.is_placement_phase = False
+        else:
+            if not self.is_game_over:
+                y, x = self.robber_node
+                potential_moves = [(y, x), (y+1, x), (y-1, x), (y, x+1), (y, x-1)]
+                random_node = random.choice(potential_moves)
+                if random_node in self.graph:
+                    self.robber_node = random_node
+                
+        self.turn_count += 1
+        self.turn_count_label.setText(f"Turn: {self.turn_count}")
+        self.is_robber_turn = not self.is_robber_turn
+        self.turn_label.setText("Cop's Turn")
+        self.display_graph()
+        self.check_game_over()
+        QTimer.singleShot(250, self.auto_cop_strategy)
+
+    """Handles logic for deciding cops moves to implement strategy of capturing robber"""
+    def auto_cop_strategy(self):
+        if self.is_placement_phase:
+            if not self.is_robber_turn:
+                # Place C1 in a right most column path in its centre
+            
+                # Find the column furthest to the right of the graph
+                rightmost_column = max(x for (y, x) in self.graph.nodes)
+
+                # Collect all nodes from that column in a sorted list
+                rightmost_nodes = [(y, x) for (y, x) in self.graph.nodes if x == rightmost_column]
+
+                # Find far right node in the highest row, which has the lowest y
+                top_right_node = min(rightmost_nodes, key=lambda node: node[0])
+                
+                c1_column_path = self.find_column_path(top_right_node)
+                
+                # Place C1 in the middle of column path
+                mid_index = len(c1_column_path) // 2
+                self.cop_nodes.append(c1_column_path[mid_index])
+
+                # Place C2 in the adjacent column path to C1
+                # Find a node in the adjacent column which has an edge to C1 column path
+                for node in c1_column_path:
+                    y, x = node
+                    test_node = (y, x-1) 
+                    if(test_node in self.graph.nodes):
+                        if ((node, test_node) in self.graph.edges):
+                            c2_column_path = self.find_column_path(test_node)
+                            break
+
+                mid_index = len(c2_column_path) // 2
+                self.cop_nodes.append(c2_column_path[mid_index])
+
+                self.target_column_path = c1_column_path
+                self.guarding = [False, True]
+                self.turn_label.setText("Robber's Placement Phase")
+                self.is_robber_turn = not self.is_robber_turn
+                self.turn_count += 1
+                self.turn_count_label.setText(f"Turn: {self.turn_count}")
+                self.display_graph()
+                self.check_game_over()
+        else:
+            if not self.is_game_over:
+                # Cop 1 Move
+                cop1 = self.cop_nodes[self.cop1_pointer]
+                # Check if C1 is on the target column path
+                if(cop1 in self.target_column_path):
+
+                    # Since Cop 1 is on column path, Check if guarded based on robber posistion 
+                    # Find the closest node on target path to robber, compare distance from cop and robber to that node
+                    robber_target, robber_target_path = self.shortest_path_to_column_path(self.robber_node, self.target_column_path)
+                    cop_to_robber_target = nx.shortest_path_length(self.graph, self.cop_nodes[self.cop1_pointer], robber_target)
+
+                    # If Cop 1 can get to that node quicker than the column path is gaureded
+                    if (cop_to_robber_target < len(robber_target_path)):
+                        self.cop1_guarded = True
+
+                    # If Cop 1 doesn't guard column at current posistion must move closer node closer to robber on the column path
+                    else:
+                        self.guard_column_path(self.cop1_pointer)
+            
+                # If Cop 1 not on target column path make move towards it
+                else:
+
+                    # Check if we have a target node to aim for on the target column path
+                    if self.target_node not in self.target_column_path:
+
+                        # target node on target column path and path from cop1 to that target node
+                        self.target_node, self.target_path = self.shortest_path_to_column_path(cop1, self.target_column_path)
+        
+                    # Find Cop 1 on the target path and interate it to follow the path to the target node
+                    for i in range(0, len(self.target_path)):
+                        if self.cop_nodes[self.cop1_pointer] == self.target_path[i]:
+                            self.cop_nodes[self.cop1_pointer] = self.target_path[i+1]
+                            break
+
+                # Cop 2 Move
+                cop2_column = self.cop_nodes[self.cop2_pointer][1]
+                cop2_row = self.cop_nodes[self.cop2_pointer][0]
+                cop2_column_path = self.find_column_path(self.cop_nodes[self.cop2_pointer])
+                robber_target, robber_target_path = self.shortest_path_to_column_path(self.robber_node, cop2_column_path)
+                cop_to_robber_target = nx.shortest_path_length(self.graph, self.cop_nodes[self.cop2_pointer], robber_target)
+
+                # Check if Cop 2 based on their current posistion still guards the column path they are on
+                if not (cop_to_robber_target < len(robber_target_path)):
+                    self.guard_column_path(self.cop2_pointer)
+
+                # Cop 1 and Cop 2 swap roles if Cop 1 sucessfully guards their column path, as it frees up Cop 2 to find a new column path to guard
+                if self.cop1_guarded:
+                    # Find Connected Components after G-P and of them the connected component the robber is in
+                    graph_modified = self.graph.copy()
+                    graph_modified.remove_nodes_from(self.target_column_path)
+                    components = list(nx.connected_components(graph_modified))
+                    for component in components:
+                        if self.robber_node in component:
+                            robber_component = component
+
+                    # Check for nodes which reside on the adjacent column path in the robber's component
+                    for node in self.target_column_path:
+                        y, x = node
+                        test_nodes = [(y, x-1), (y, x+1)]
+                        for test_node in test_nodes:
+                            if(test_node in self.graph.nodes):
+                                if ((node, test_node) in self.graph.edges):
+                                    if test_node in robber_component:
+                                        adjacent_path_node = test_node
+                    self.target_column_path = self.find_column_path(adjacent_path_node)
+                    # Swap the Cop 1 and Cop 2 pointers
+                    temp = self.cop1_pointer
+                    self.cop1_pointer = self.cop2_pointer
+                    self.cop2_pointer = temp
+                    self.cop1_guarded = False
+
+                self.turn_count += 1
+                self.turn_count_label.setText(f"Turn: {self.turn_count}")
+                self.is_robber_turn = not self.is_robber_turn
+                self.turn_label.setText("Robber's Turn")
+                self.display_graph()
+                self.check_game_over()
+                QTimer.singleShot(250, self.robber_strategy)
+            
+    """Check for if cop has captured robber"""
+    def check_game_over(self):
+        for cop in self.cop_nodes:
+            if cop == self.robber_node:
+                self.turn_label.setText("Game Over, Cops captured the robber")
+                self.is_game_over = True
 
 
 
