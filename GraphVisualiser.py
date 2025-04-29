@@ -5,12 +5,14 @@ from matplotlib.figure import Figure
 import networkx as nx
 import random
 from PyQt5.QtWidgets import QSizePolicy, QHBoxLayout
+from PyQt5.QtGui import QIcon
 
 class MainApp(QMainWindow):
     def __init__(self):
         super().__init__()
         # Set up stacked window to switch between defined windows
-        self.setWindowTitle("Graph Visualizer")
+        self.setWindowTitle("Cops and Robbers on Solid Grids")
+        self.setWindowIcon(QIcon("icon.png"))
         self.setGeometry(100, 100, 800, 600)
 
         self.stacked_widget = QStackedWidget()
@@ -28,18 +30,70 @@ class MainApp(QMainWindow):
         self.auto_strategy_window = AutomatedStrategyWindow(self)
         self.stacked_widget.addWidget(self.auto_strategy_window)
 
-    """Switch to the game window."""
+        self.setStyleSheet("""
+        QWidget {
+            background-color: #f9f9f9;
+            color: #333;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 12pt;
+        }
+
+        QLabel {
+            color: #222;
+            font-weight: bold;
+        }
+
+        QLineEdit {
+            background-color: #ffffff;
+            border: 1px solid #cccccc;
+            padding: 6px;
+            border-radius: 5px;
+            selection-background-color: #cce4ff;
+        }
+
+        QPushButton {
+            background-color: #e0f0ff;
+            border: 1px solid #a6c8e0;
+            padding: 6px 12px;
+            border-radius: 5px;
+        }
+
+        QPushButton:hover {
+            background-color: #d2eaff;
+            border: 1px solid #7fbbe3;
+        }
+
+        QPushButton:pressed {
+            background-color: #aad4f5;
+            border: 1px solid #5aa7da;
+            color: #fff;
+        }
+
+        QVBoxLayout, QHBoxLayout {
+            margin: 0px;
+            spacing: 10px;
+        }
+
+        QLineEdit:focus {
+            border: 1px solid #66afe9;
+            outline: none;
+        }
+        """)
+
+    """Switch to the Player Vs. Player window"""
     def switch_to_game_window(self, graph, pos, node_size):
         self.game_window.update_graph(graph, pos, node_size)
         self.game_window.display_graph()
         self.stacked_widget.setCurrentIndex(1)
 
+    """Switch to the Player Vs. Strategy window"""
     def switch_to_strategy_window(self, graph, pos, node_size):
         self.strategy_window.update_graph(graph, pos, node_size)
         self.strategy_window.display_graph()
         self.strategy_window.cop_strategy()
         self.stacked_widget.setCurrentIndex(2)
     
+    """Switch to the Player Vs. Auto Strategy window"""
     def switch_to_auto_strategy_window(self, graph, pos, node_size):
         self.auto_strategy_window.update_graph(graph, pos, node_size)
         self.auto_strategy_window.display_graph()
@@ -95,9 +149,11 @@ class GraphCreator(QWidget):
         self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.canvas)
 
-        # Connect mouse click event
+        # Connect mouse click and hover event
         self.mouse_click_cid = self.canvas.mpl_connect("button_press_event", self.on_click)
-        
+        self.last_hovered_node = None
+        self.mouse_hover_cid = self.canvas.mpl_connect("motion_notify_event", self.on_hover)
+
         # Instance variables for storing the graph
         self.graph = None  
         self.pos = {}  
@@ -109,8 +165,8 @@ class GraphCreator(QWidget):
             rows = int(self.input_rows.text())
             cols = int(self.input_cols.text())
 
-            if not (1 <= rows <= 100 and 1 <= cols <= 100):
-                self.label.setText("Error: Rows & Columns must be between 1 and 20.")
+            if not (1 <= rows <= 75 and 1 <= cols <= 75):
+                self.label.setText("Error: Rows & Columns must be between 1 and 75.")
                 return
             
             self.label.setText(f"Grid {rows} × {cols}")
@@ -123,7 +179,7 @@ class GraphCreator(QWidget):
 
             # Update node size dynamically as node number increases and canvas size changes
             area_per_node = (self.canvas.width() * self.canvas.height()) / (rows * cols)
-            self.node_size = max(10, min(300, int(area_per_node * 0.05)))
+            self.node_size = max(5, min(200, int(area_per_node * 0.03)))
 
             # Draw the graph
             self.redraw_graph()
@@ -133,22 +189,15 @@ class GraphCreator(QWidget):
 
     """Handle mouse click to remove border nodes."""
     def on_click(self, event):
+        # Ignore clicks outside the plot
         if event.xdata is None or event.ydata is None:
-            return  # Ignore clicks outside the plot
+            return  
 
         # Define a threshold distance to decide on which clicks to count
         click_threshold = 0.25
 
         # Find the nearest node
-        closest_node, min_distance = None, float('inf')
-        for node in self.graph.nodes:
-            dist = (self.pos[node][0] - event.xdata) ** 2 + (self.pos[node][1] - event.ydata) ** 2
-            if dist < min_distance:
-                min_distance = dist
-                closest_node = node
-
-        # Convert squared distance to actual distance for comparison
-        min_distance = min_distance ** 0.5  
+        closest_node, min_distance = self.find_closest_node(event.xdata, event.ydata)
 
         # Only proceed if the click is within the threshold distance
         if min_distance > click_threshold:
@@ -160,18 +209,83 @@ class GraphCreator(QWidget):
                 self.graph.remove_node(closest_node)
                 self.redraw_graph()  
     
+    """Handle mouse hovering over nodes for highlighting"""
+    def on_hover(self, event):
+        # Ignore hovering when mouse outside plot or when no graph exists
+        if event.xdata is None or event.ydata is None:
+            if not self.graph:
+                return  
+        
+        # Define a threshold distance to decide on which clicks to count
+        click_threshold = 0.25
+
+        # Find the nearest node
+        closest_node, min_distance = self.find_closest_node(event.xdata, event.ydata)
+
+        # Check if the node is a border node
+        is_safe = False
+        if self.is_border_node(closest_node):
+            if self.is_removal_safe(closest_node):
+                is_safe = True
+
+        # Only proceed if the click is within the threshold distance
+        if min_distance > click_threshold:
+            if self.last_hovered_node is not None:
+                self.last_hovered_node = None
+                self.redraw_graph()
+            return
+        
+        # Highlight node when different to last node, to only highlight nodes once
+        if closest_node != self.last_hovered_node:
+            self.last_hovered_node = closest_node
+            self.redraw_graph(closest_node, is_safe)
+
+    """Finds the closest node to given x and y data"""
+    def find_closest_node(self, xdata, ydata):
+        # Find the nearest node
+        closest_node, min_distance = None, float('inf')
+        for node in self.graph.nodes:
+            dist = (self.pos[node][0] - xdata) ** 2 + (self.pos[node][1] - ydata) ** 2
+            if dist < min_distance:
+                min_distance = dist
+                closest_node = node
+        # Convert squared distance to actual distance for comparison
+        min_distance = min_distance ** 0.5  
+        return closest_node, min_distance
+        
     """Redraws the graph"""
-    def redraw_graph(self):
+    def redraw_graph(self, highlight_node=None, is_safe=None):
+        # Clear the figure to handle changes to graph structure
         self.canvas.figure.clear()
+
+        # Create and draw the graph
         ax = self.canvas.figure.add_subplot(111)
-        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="#6699cc", edge_color="#cccccc", node_size=self.node_size)
+
+        # Set node colour depending on how and if it should be highlighted
+        nodes = list(self.graph.nodes)
+        node_colors = []
+        for node in nodes:
+            if node == highlight_node:
+                if is_safe:
+                    node_colors.append('green')
+                elif not is_safe:
+                    node_colors.append('red')
+                else:
+                    node_colors.append('#66CCCC')
+            else:
+                node_colors.append('#6699cc')
+
+        # Draw nodes and edges seperately for performance
+        nx.draw_networkx_nodes(self.graph, self.pos, ax=ax,
+                                nodelist=nodes, node_color=node_colors, node_size=self.node_size)
+        nx.draw_networkx_edges(self.graph, self.pos, ax=ax, edge_color="#cccccc")
+        ax.set_axis_off()
         self.canvas.figure.tight_layout(pad=0)
         self.canvas.draw()
 
     """Check if a node is on the border (has a missing neighbor)."""
     def is_border_node(self, node):
         x, y = node
-        #neighbors = [(x-1, y), (x+1, y), (x, y-1), (x, y+1), (x-1, y-1), (x-1, y+1), (x+1, y-1), (x+1, y+1)]
         neighbors = [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
         for neigh in neighbors:
             if neigh not in self.graph.nodes:
@@ -194,31 +308,36 @@ class GraphCreator(QWidget):
         # If the number of components increased, removing this node is unsafe
         return new_components == initial_components
 
-    """Handle submit button functionality to change window"""
+    """Handle submit button functionality to change window to Player vs Player"""
     def submit_graph(self):
         if not self.graph:
             return
 
         # Disconnect the mouse click event
         self.canvas.mpl_disconnect(self.mouse_click_cid)
+        self.canvas.mpl_disconnect(self.mouse_hover_cid)
 
         self.parent.switch_to_game_window(self.graph, self.pos, self.node_size)
 
+    """Handle submit button functionality to change window to Player vs Strategy"""
     def submit_graph_strategy(self):
         if not self.graph:
             return
 
-        # Disconnect the mouse click event
+        # Disconnect the mouse events
         self.canvas.mpl_disconnect(self.mouse_click_cid)
+        self.canvas.mpl_disconnect(self.mouse_hover_cid)
 
         self.parent.switch_to_strategy_window(self.graph, self.pos, self.node_size)
     
+    """Handle submit button functionality to change window to Player vs Auto Strategy"""
     def submit_graph_auto_strategy(self):
         if not self.graph:
             return
 
-        # Disconnect the mouse click event
+        # Disconnect the mouse events
         self.canvas.mpl_disconnect(self.mouse_click_cid)
+        self.canvas.mpl_disconnect(self.mouse_hover_cid)
 
         self.parent.switch_to_auto_strategy_window(self.graph, self.pos, self.node_size)
 
