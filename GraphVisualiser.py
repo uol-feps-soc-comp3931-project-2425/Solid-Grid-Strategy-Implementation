@@ -4,6 +4,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import networkx as nx
 import random
+from PyQt5.QtWidgets import QSizePolicy, QHBoxLayout
 
 class MainApp(QMainWindow):
     def __init__(self):
@@ -70,28 +71,33 @@ class GraphCreator(QWidget):
         self.button.clicked.connect(self.generate_graph)
         layout.addWidget(self.button)
 
+        # Submit Buttons
+        submit_layout = QHBoxLayout()
+
         # Button to submit graph - To normal game window
-        self.button_submit = QPushButton("Submit (Player Vs. Player)", self)
+        self.button_submit = QPushButton("Submit (Vs. Player)", self)
         self.button_submit.clicked.connect(self.submit_graph)
-        layout.addWidget(self.button_submit)
+        submit_layout.addWidget(self.button_submit)
 
         # Button to submit graph - To normal strategy window
         self.button_submit = QPushButton("Submit (Vs. Strategy)", self)
         self.button_submit.clicked.connect(self.submit_graph_strategy)
-        layout.addWidget(self.button_submit)
+        submit_layout.addWidget(self.button_submit)
 
         # Button to submit graph - To automated strategy window
-        self.button_submit = QPushButton("Submit (Vs. Strategy (auto))", self)
+        self.button_submit = QPushButton("Submit (Vs. Auto Strategy)", self)
         self.button_submit.clicked.connect(self.submit_graph_auto_strategy)
-        layout.addWidget(self.button_submit)
+        submit_layout.addWidget(self.button_submit)
+        layout.addLayout(submit_layout)
 
         # Matplotlib Figure
         self.canvas = FigureCanvas(Figure())
+        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.canvas)
 
         # Connect mouse click event
         self.mouse_click_cid = self.canvas.mpl_connect("button_press_event", self.on_click)
-
+        
         # Instance variables for storing the graph
         self.graph = None  
         self.pos = {}  
@@ -103,7 +109,7 @@ class GraphCreator(QWidget):
             rows = int(self.input_rows.text())
             cols = int(self.input_cols.text())
 
-            if not (1 <= rows <= 20 and 1 <= cols <= 20):
+            if not (1 <= rows <= 100 and 1 <= cols <= 100):
                 self.label.setText("Error: Rows & Columns must be between 1 and 20.")
                 return
             
@@ -115,8 +121,9 @@ class GraphCreator(QWidget):
             # Update the posistions so the graph forms a grid
             self.pos = {(x, y): (y, -x) for x, y in self.graph.nodes()}  # Invert y for correct orientation from networkX to matplotlib
 
-            # Update node size dynamically as node number increases
-            self.node_size = max(50, 4000 // (rows * cols))
+            # Update node size dynamically as node number increases and canvas size changes
+            area_per_node = (self.canvas.width() * self.canvas.height()) / (rows * cols)
+            self.node_size = max(10, min(300, int(area_per_node * 0.05)))
 
             # Draw the graph
             self.redraw_graph()
@@ -157,7 +164,8 @@ class GraphCreator(QWidget):
     def redraw_graph(self):
         self.canvas.figure.clear()
         ax = self.canvas.figure.add_subplot(111)
-        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size)
+        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="#6699cc", edge_color="#cccccc", node_size=self.node_size)
+        self.canvas.figure.tight_layout(pad=0)
         self.canvas.draw()
 
     """Check if a node is on the border (has a missing neighbor)."""
