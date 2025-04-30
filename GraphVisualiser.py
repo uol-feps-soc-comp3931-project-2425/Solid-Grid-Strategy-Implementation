@@ -1,11 +1,10 @@
-from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QLineEdit, QPushButton, QLabel, QStackedWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QLineEdit, QPushButton, QLabel, QStackedWidget, QSizePolicy, QHBoxLayout
 from PyQt5.QtCore import QTimer
+from PyQt5.QtGui import QIcon
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import networkx as nx
 import random
-from PyQt5.QtWidgets import QSizePolicy, QHBoxLayout
-from PyQt5.QtGui import QIcon
 
 class MainApp(QMainWindow):
     def __init__(self):
@@ -159,6 +158,8 @@ class GraphCreator(QWidget):
         self.pos = {}  
         self.node_size = None
 
+        
+
     """Generate a grid graph based on user input and display it."""
     def generate_graph(self):
         try:
@@ -179,13 +180,19 @@ class GraphCreator(QWidget):
 
             # Update node size dynamically as node number increases and canvas size changes
             area_per_node = (self.canvas.width() * self.canvas.height()) / (rows * cols)
-            self.node_size = max(5, min(200, int(area_per_node * 0.03)))
+            self.node_size = max(10, min(200, int(area_per_node * 0.03)))
 
             # Draw the graph
             self.redraw_graph()
 
         except ValueError:
             self.label.setText("Error: Please enter valid integers.")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+        if self.graph:
+            self.generate_graph()
 
     """Handle mouse click to remove border nodes."""
     def on_click(self, event):
@@ -267,9 +274,9 @@ class GraphCreator(QWidget):
         for node in nodes:
             if node == highlight_node:
                 if is_safe:
-                    node_colors.append('green')
+                    node_colors.append('#66cc89')
                 elif not is_safe:
-                    node_colors.append('red')
+                    node_colors.append('#cc6666')
                 else:
                     node_colors.append('#66CCCC')
             else:
@@ -369,6 +376,7 @@ class GameWindow(QWidget):
         layout.addWidget(self.turn_label)
 
         self.canvas = FigureCanvas(Figure())
+        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.canvas)
 
         # Connect mouse click event
@@ -385,8 +393,12 @@ class GameWindow(QWidget):
         self.canvas.figure.clear()
         ax = self.canvas.figure.add_subplot(111)
 
-        # Draw user created graph
-        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size, node_shape='s')
+        nodes = list(self.graph.nodes)
+        # Draw nodes and edges seperately for performance
+        nx.draw_networkx_nodes(self.graph, self.pos, ax=ax,nodelist=nodes, 
+                               node_color='#6699cc', node_size=self.node_size, node_shape='s')
+        nx.draw_networkx_edges(self.graph, self.pos, ax=ax, edge_color="#cccccc")
+       
 
         # Highlight Legal moves
         if not self.is_placement_phase:
@@ -413,6 +425,8 @@ class GameWindow(QWidget):
             nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size*0.7)
 
         # Highlight legal moves
+        ax.set_axis_off()
+        self.canvas.figure.tight_layout(pad=0)
         nx.draw_networkx_nodes(self.graph, self.pos, nodelist=legal_moves, node_color="black", ax=ax, node_size=self.node_size*0.2, alpha=0.7)
 
         self.canvas.draw()
@@ -571,6 +585,7 @@ class StrategyWindow(QWidget):
         layout.addWidget(self.turn_label)
 
         self.canvas = FigureCanvas(Figure())
+        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.canvas)
 
         # Connect mouse click event
@@ -587,8 +602,11 @@ class StrategyWindow(QWidget):
         self.canvas.figure.clear()
         ax = self.canvas.figure.add_subplot(111)
 
-        # Draw user created graph
-        nx.draw(self.graph, self.pos, ax=ax, with_labels=False, node_color="lightblue", node_size=self.node_size, node_shape='s')
+        nodes = list(self.graph.nodes)
+        # Draw nodes and edges seperately for performance
+        nx.draw_networkx_nodes(self.graph, self.pos, ax=ax,nodelist=nodes, 
+                               node_color='#6699cc', node_size=self.node_size, node_shape='s')
+        nx.draw_networkx_edges(self.graph, self.pos, ax=ax, edge_color="#cccccc")
 
         # Highlight Legal moves
         if self.highlight_moves:
@@ -616,6 +634,8 @@ class StrategyWindow(QWidget):
         # Highlight legal moves
         nx.draw_networkx_nodes(self.graph, self.pos, nodelist=legal_moves, node_color="black", ax=ax, node_size=self.node_size*0.2, alpha=0.7)
 
+        ax.set_axis_off()
+        self.canvas.figure.tight_layout(pad=0)
         self.canvas.draw()
 
     """Handle mouse click events."""
@@ -938,6 +958,7 @@ class AutomatedStrategyWindow(StrategyWindow):
         layout.addWidget(self.button_submit)
 
         self.canvas = FigureCanvas(Figure())
+        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self.canvas)
     
     """Handles the start of the automated game"""
@@ -1100,8 +1121,6 @@ class AutomatedStrategyWindow(StrategyWindow):
             if cop == self.robber_node:
                 self.turn_label.setText("Game Over, Cops captured the robber")
                 self.is_game_over = True
-
-
 
 app = QApplication([])
 window = MainApp()
