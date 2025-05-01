@@ -152,13 +152,12 @@ class GraphCreator(QWidget):
         self.mouse_click_cid = self.canvas.mpl_connect("button_press_event", self.on_click)
         self.last_hovered_node = None
         self.mouse_hover_cid = self.canvas.mpl_connect("motion_notify_event", self.on_hover)
+        self.canvas.mpl_connect("figure_leave_event", self.on_mouse_leave)
 
         # Instance variables for storing the graph
         self.graph = None  
         self.pos = {}  
         self.node_size = None
-
-        
 
     """Generate a grid graph based on user input and display it."""
     def generate_graph(self):
@@ -166,8 +165,8 @@ class GraphCreator(QWidget):
             rows = int(self.input_rows.text())
             cols = int(self.input_cols.text())
 
-            if not (1 <= rows <= 75 and 1 <= cols <= 75):
-                self.label.setText("Error: Rows & Columns must be between 1 and 75.")
+            if not (1 <= rows <= 50 and 1 <= cols <= 50):
+                self.label.setText("Error: Rows & Columns must be between 1 and 50.")
                 return
             
             self.label.setText(f"Grid {rows} × {cols}")
@@ -179,8 +178,16 @@ class GraphCreator(QWidget):
             self.pos = {(x, y): (y, -x) for x, y in self.graph.nodes()}  # Invert y for correct orientation from networkX to matplotlib
 
             # Update node size dynamically as node number increases and canvas size changes
-            area_per_node = (self.canvas.width() * self.canvas.height()) / (rows * cols)
-            self.node_size = max(10, min(200, int(area_per_node * 0.03)))
+            total_nodes = rows * cols
+            balance_factor = (min(rows, cols) / max(rows, cols))  # 1 = perfect square, <1 = imbalanced
+            canvas_area = self.canvas.width() * self.canvas.height()
+            scaling_base = canvas_area / (total_nodes ** 1.1)     # Slightly sublinear decrease with node count
+
+            # Adjust for aspect ratio balance
+            adjusted_area = scaling_base * balance_factor
+
+            # Final node size with cap
+            self.node_size = max(5, min(350, int(adjusted_area ** 0.5)))  # convert area to size (sqrt)
 
             # Draw the graph
             self.redraw_graph()
@@ -188,6 +195,7 @@ class GraphCreator(QWidget):
         except ValueError:
             self.label.setText("Error: Please enter valid integers.")
 
+    """Resize event"""
     def resizeEvent(self, event):
         super().resizeEvent(event)
 
@@ -220,8 +228,9 @@ class GraphCreator(QWidget):
     def on_hover(self, event):
         # Ignore hovering when mouse outside plot or when no graph exists
         if event.xdata is None or event.ydata is None:
-            if not self.graph:
-                return  
+            if self.graph:
+                self.redraw_graph()
+            return  
         
         # Define a threshold distance to decide on which clicks to count
         click_threshold = 0.25
@@ -247,6 +256,12 @@ class GraphCreator(QWidget):
             self.last_hovered_node = closest_node
             self.redraw_graph(closest_node, is_safe)
 
+    """Handle mouse leaving a figure to stop hovering"""
+    def on_mouse_leave(self, event):
+        if self.last_hovered_node is not None:
+            self.last_hovered_node = None
+            self.redraw_graph()
+
     """Finds the closest node to given x and y data"""
     def find_closest_node(self, xdata, ydata):
         # Find the nearest node
@@ -264,9 +279,12 @@ class GraphCreator(QWidget):
     def redraw_graph(self, highlight_node=None, is_safe=None):
         # Clear the figure to handle changes to graph structure
         self.canvas.figure.clear()
-
-        # Create and draw the graph
         ax = self.canvas.figure.add_subplot(111)
+
+        # Set scaling of figure to make graphs unit distance
+        ax.set_aspect(1, adjustable="datalim")
+        self.canvas.figure.tight_layout(pad=0)
+        ax.set_axis_off()
 
         # Set node colour depending on how and if it should be highlighted
         nodes = list(self.graph.nodes)
@@ -286,8 +304,7 @@ class GraphCreator(QWidget):
         nx.draw_networkx_nodes(self.graph, self.pos, ax=ax,
                                 nodelist=nodes, node_color=node_colors, node_size=self.node_size)
         nx.draw_networkx_edges(self.graph, self.pos, ax=ax, edge_color="#cccccc")
-        ax.set_axis_off()
-        self.canvas.figure.tight_layout(pad=0)
+     
         self.canvas.draw()
 
     """Check if a node is on the border (has a missing neighbor)."""
@@ -390,16 +407,21 @@ class GameWindow(QWidget):
 
     """Display the graph."""
     def display_graph(self):
+        # Clear the figure to handle changes to graph structure
         self.canvas.figure.clear()
         ax = self.canvas.figure.add_subplot(111)
 
+        # Set scaling of figure to make graphs unit distance
+        ax.set_aspect(1, adjustable="datalim", anchor="C")
+        self.canvas.figure.tight_layout(pad=0)
+        ax.set_axis_off()
+
         nodes = list(self.graph.nodes)
         # Draw nodes and edges seperately for performance
-        nx.draw_networkx_nodes(self.graph, self.pos, ax=ax,nodelist=nodes, 
+        nx.draw_networkx_nodes(self.graph, self.pos, ax=ax, nodelist=nodes, 
                                node_color='#6699cc', node_size=self.node_size, node_shape='s')
         nx.draw_networkx_edges(self.graph, self.pos, ax=ax, edge_color="#cccccc")
        
-
         # Highlight Legal moves
         if not self.is_placement_phase:
 
@@ -418,19 +440,50 @@ class GameWindow(QWidget):
         else:
             legal_moves = [node for node in self.graph.nodes if node not in self.cop_nodes]
     
+        # Highlight legal moves
+        nx.draw_networkx_nodes(self.graph, self.pos, ax=ax, nodelist=legal_moves, 
+                               node_color="#66cc89", node_size=self.node_size, node_shape='s')
+
         # Highlight cop and robber nodes through colour and size
         if self.cop_nodes:
             nx.draw_networkx_nodes(self.graph, self.pos, nodelist=self.cop_nodes, node_color="blue", ax=ax, node_size=self.node_size*0.7)
         if self.robber_node is not None:
             nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size*0.7)
 
-        # Highlight legal moves
-        ax.set_axis_off()
-        self.canvas.figure.tight_layout(pad=0)
-        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=legal_moves, node_color="black", ax=ax, node_size=self.node_size*0.2, alpha=0.7)
+        # Associate lables whith player nodes
+        labels = {}
+        if self.robber_node is not None:
+            labels[self.robber_node] = "R"
+        if self.cop_nodes:
+            if len(self.cop_nodes) > 0:
+                labels[self.cop_nodes[0]] = "C1"
+            if len(self.cop_nodes) > 1:
+                labels[self.cop_nodes[1]] = "C2"
+        nx.draw_networkx_labels(self.graph, self.pos, labels=labels, font_color='white', font_size=self.node_size*0.045, ax=ax)
 
         self.canvas.draw()
-   
+    
+    """Resize event"""
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+        if self.graph:
+            # Update node size dynamically as node number increases and canvas size changes
+            rows = max(x for x, y in self.graph.nodes) + 1
+            cols = max(y for x, y in self.graph.nodes) + 1
+            total_nodes = rows * cols
+            balance_factor = (min(rows, cols) / max(rows, cols))  # 1 = perfect square, <1 = imbalanced
+            canvas_area = self.canvas.width() * self.canvas.height()
+            scaling_base = canvas_area / (total_nodes ** 1.1)     # Slightly sublinear decrease with node count
+
+            # Adjust for aspect ratio balance
+            adjusted_area = scaling_base * balance_factor
+
+            # Final node size with cap
+            self.node_size = max(5, min(350, int(adjusted_area ** 0.5)))  # convert area to size (sqrt)
+
+            self.display_graph()
+
     """Handle mouse click events."""
     def on_click(self, event):
         if event.xdata is None or event.ydata is None:
@@ -601,6 +654,10 @@ class StrategyWindow(QWidget):
     def display_graph(self):
         self.canvas.figure.clear()
         ax = self.canvas.figure.add_subplot(111)
+        ax.set_aspect(1, adjustable="datalim")
+        self.canvas.figure.tight_layout(pad=0)
+        ax.set_axis_off()
+
 
         nodes = list(self.graph.nodes)
         # Draw nodes and edges seperately for performance
@@ -634,7 +691,6 @@ class StrategyWindow(QWidget):
         # Highlight legal moves
         nx.draw_networkx_nodes(self.graph, self.pos, nodelist=legal_moves, node_color="black", ax=ax, node_size=self.node_size*0.2, alpha=0.7)
 
-        ax.set_axis_off()
         self.canvas.figure.tight_layout(pad=0)
         self.canvas.draw()
 
