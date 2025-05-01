@@ -450,17 +450,6 @@ class GameWindow(QWidget):
         if self.robber_node is not None:
             nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size*0.7)
 
-        # Associate lables whith player nodes
-        labels = {}
-        if self.robber_node is not None:
-            labels[self.robber_node] = "R"
-        if self.cop_nodes:
-            if len(self.cop_nodes) > 0:
-                labels[self.cop_nodes[0]] = "C1"
-            if len(self.cop_nodes) > 1:
-                labels[self.cop_nodes[1]] = "C2"
-        nx.draw_networkx_labels(self.graph, self.pos, labels=labels, font_color='white', font_size=self.node_size*0.045, ax=ax)
-
         self.canvas.draw()
     
     """Resize event"""
@@ -518,12 +507,14 @@ class GameWindow(QWidget):
         if self.is_placement_phase:
             # Set starting posistion to clicked node
             if player == "robber":
-                self.robber_node = closest_node
+                if closest_node not in self.cop_nodes:
+                    self.robber_node = closest_node
             else:
 
                 # Adds node to list to say that is one of the cop nodes
-                self.cop_nodes.append(closest_node)
-                self.cop_moved[len(self.cop_nodes)-1] = True
+                if closest_node not in self.cop_nodes:
+                    self.cop_nodes.append(closest_node)
+                    self.cop_moved[len(self.cop_nodes)-1] = True
             
             # Check if both cops have made a move
             both_moved = True
@@ -541,7 +532,7 @@ class GameWindow(QWidget):
             elif both_moved:
                 self.is_robber_turn = not self.is_robber_turn
                 self.turn_label.setText("Robber's Placement Phase")
-            else:
+            elif True in self.cop_moved:
                 self.turn_label.setText("Cop's Placement Phase 2")
         else:
             
