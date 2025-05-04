@@ -643,9 +643,12 @@ class StrategyWindow(QWidget):
 
     """Display the graph."""
     def display_graph(self):
+        # Clear the figure to handle changes to graph structure
         self.canvas.figure.clear()
         ax = self.canvas.figure.add_subplot(111)
-        ax.set_aspect(1, adjustable="datalim")
+
+        # Set scaling of figure to make graph unit distance
+        ax.set_aspect(1, adjustable="datalim", anchor='C')
         self.canvas.figure.tight_layout(pad=0)
         ax.set_axis_off()
 
@@ -672,17 +675,16 @@ class StrategyWindow(QWidget):
         else:
             legal_moves=[]
         
-        
+        # Highlight legal moves
+        nx.draw_networkx_nodes(self.graph, self.pos, ax=ax, nodelist=legal_moves, 
+                               node_color="#66cc89", node_size=self.node_size, node_shape='s')
+
         # Highlight cop and robber nodes through colour and size
         if self.cop_nodes:
             nx.draw_networkx_nodes(self.graph, self.pos, nodelist=self.cop_nodes, node_color="blue", ax=ax, node_size=self.node_size*0.7)
         if self.robber_node is not None:
             nx.draw_networkx_nodes(self.graph, self.pos, nodelist=[self.robber_node], node_color="red", ax=ax, node_size=self.node_size*0.7)
 
-        # Highlight legal moves
-        nx.draw_networkx_nodes(self.graph, self.pos, nodelist=legal_moves, node_color="black", ax=ax, node_size=self.node_size*0.2, alpha=0.7)
-
-        self.canvas.figure.tight_layout(pad=0)
         self.canvas.draw()
 
     """Handle mouse click events."""
@@ -715,10 +717,13 @@ class StrategyWindow(QWidget):
     """Make a move for the robber or cop"""
     def make_move(self, closest_node):         
         if self.is_placement_phase:
-            self.robber_node = closest_node
-            self.is_robber_turn = not self.is_robber_turn
-            self.is_placement_phase = False
-            self.cop_strategy()
+            if closest_node not in self.cop_nodes:
+                self.robber_node = closest_node
+                self.is_robber_turn = not self.is_robber_turn
+                self.is_placement_phase = False
+                self.display_graph()
+                self.check_game_over()
+                self.cop_strategy()
         else:
             # Check if node near mouse click is a neighbour of player posistion node, the current node
             current_node = self.robber_node
@@ -731,11 +736,10 @@ class StrategyWindow(QWidget):
                 self.robber_node = closest_node
                 self.is_robber_turn = not self.is_robber_turn
                 self.turn_label.setText("Cop's Turn")
+                self.display_graph()
+                self.check_game_over()
                 self.cop_strategy()
-
-        self.display_graph()
-        self.check_game_over()
-        
+  
     """Check for if cop has captured robber"""
     def check_game_over(self):
         for cop in self.cop_nodes:
