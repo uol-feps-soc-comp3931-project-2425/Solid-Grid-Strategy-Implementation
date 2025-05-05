@@ -94,11 +94,17 @@ class MainApp(QMainWindow):
     
     """Switch to the Player Vs. Auto Strategy window"""
     def switch_to_auto_strategy_window(self, graph, pos, node_size):
+        self.auto_strategy_window.reset_state()
         self.auto_strategy_window.update_graph(graph, pos, node_size)
         self.auto_strategy_window.display_graph()
         self.auto_strategy_window.cop_strategy()
         self.stacked_widget.setCurrentIndex(3)
+
+    def switch_to_starting_window(self):
+        self.stacked_widget.setCurrentIndex(0)
         
+
+
 class GraphCreator(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
@@ -965,7 +971,8 @@ class StrategyWindow(QWidget):
 
 class AutomatedStrategyWindow(StrategyWindow):
     def __init__(self, parent):
-        super().__init__(parent)
+        QWidget.__init__(self, parent)
+        self.parent = parent
 
          # Initialize graph info
         self.graph = None
@@ -988,10 +995,10 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.is_robber_turn = False
         self.is_placement_phase = True
      
-        # Clear old layout
-        old_layout = self.layout()  # Get the existing layout
-        if old_layout is not None:
-            QWidget().setLayout(old_layout)
+        # # Clear old layout
+        # old_layout = self.layout()  # Get the existing layout
+        # if old_layout is not None:
+        #     QWidget().setLayout(old_layout)
 
         # Set up layout and canvas
         layout = QVBoxLayout(self)
@@ -1003,10 +1010,16 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.turn_count_label = QLabel(f"Turn: {self.turn_count}", self)
         layout.addWidget(self.turn_count_label)
 
+        submit_layout = QHBoxLayout()
         # Button to start automation
         self.button_submit = QPushButton("Start", self)
         self.button_submit.clicked.connect(self.automation)
-        layout.addWidget(self.button_submit)
+        submit_layout.addWidget(self.button_submit)
+
+        self.button_restart = QPushButton("Restart", self)
+        self.button_restart.clicked.connect(self.restart)
+        submit_layout.addWidget(self.button_restart)
+        layout.addLayout(submit_layout)
 
         self.canvas = FigureCanvas(Figure())
         self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -1015,8 +1028,6 @@ class AutomatedStrategyWindow(StrategyWindow):
     """Handles the start of the automated game"""
     def automation(self):
         self.robber_strategy()
-        self.button_submit.setParent(None)  
-        self.button_submit.deleteLater() 
 
     """Handles randomized movement for robber"""
     def robber_strategy(self):
@@ -1040,7 +1051,7 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.turn_label.setText("Cop's Turn")
         self.display_graph()
         self.check_game_over()
-        QTimer.singleShot(50, self.auto_cop_strategy)
+        QTimer.singleShot(5, self.auto_cop_strategy)
 
     """Handles logic for deciding cops moves to implement strategy of capturing robber"""
     def auto_cop_strategy(self):
@@ -1164,7 +1175,7 @@ class AutomatedStrategyWindow(StrategyWindow):
                 self.turn_label.setText("Robber's Turn")
                 self.display_graph()
                 self.check_game_over()
-                QTimer.singleShot(50, self.robber_strategy)
+                QTimer.singleShot(5, self.robber_strategy)
             
     """Check for if cop has captured robber"""
     def check_game_over(self):
@@ -1172,6 +1183,33 @@ class AutomatedStrategyWindow(StrategyWindow):
             if cop == self.robber_node:
                 self.turn_label.setText("Game Over, Cops captured the robber")
                 self.is_game_over = True
+
+    def restart(self):
+        self.parent.switch_to_starting_window()
+
+    def reset_state(self):
+        self.graph = None
+        self.pos = {}
+        self.node_size = None
+        self.highlight_moves = False
+
+        self.cop_nodes = []
+        self.robber_node = None
+        self.cop1_pointer = 0
+        self.cop2_pointer = 1
+        self.guarding = [False, False]
+        self.target_column_path = []
+        self.target_node = None
+        self.target_path = []
+        self.cop1_guarded = False
+
+        self.is_game_over = False
+        self.is_robber_turn = False
+        self.is_placement_phase = True
+
+        self.turn_label.setText("Cop's Placement Phase")
+        self.turn_count = 0
+        self.turn_count_label.setText(f"Turn: {self.turn_count}")
 
 app = QApplication([])
 window = MainApp()
