@@ -100,11 +100,10 @@ class MainApp(QMainWindow):
         self.auto_strategy_window.cop_strategy()
         self.stacked_widget.setCurrentIndex(3)
 
+    """Switch to Graph Creator window"""
     def switch_to_starting_window(self):
         self.stacked_widget.setCurrentIndex(0)
         
-
-
 class GraphCreator(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
@@ -171,7 +170,7 @@ class GraphCreator(QWidget):
             rows = int(self.input_rows.text())
             cols = int(self.input_cols.text())
 
-            if not (1 <= rows <= 50 and 1 <= cols <= 50):
+            if not (2 <= rows <= 50 and 2 <= cols <= 50):
                 self.label.setText("Error: Rows & Columns must be between 1 and 50.")
                 return
             
@@ -994,11 +993,6 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.is_game_over = False
         self.is_robber_turn = False
         self.is_placement_phase = True
-     
-        # # Clear old layout
-        # old_layout = self.layout()  # Get the existing layout
-        # if old_layout is not None:
-        #     QWidget().setLayout(old_layout)
 
         # Set up layout and canvas
         layout = QVBoxLayout(self)
@@ -1006,6 +1000,7 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.turn_label = QLabel("Cop's Placement Phase", self)
         layout.addWidget(self.turn_label)
 
+        # Turn counter lable to display turns taken
         self.turn_count = 0 
         self.turn_count_label = QLabel(f"Turn: {self.turn_count}", self)
         layout.addWidget(self.turn_count_label)
@@ -1016,6 +1011,7 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.button_submit.clicked.connect(self.automation)
         submit_layout.addWidget(self.button_submit)
 
+        # Button to return to graph creation window
         self.button_restart = QPushButton("Restart", self)
         self.button_restart.clicked.connect(self.restart)
         submit_layout.addWidget(self.button_restart)
@@ -1033,12 +1029,14 @@ class AutomatedStrategyWindow(StrategyWindow):
     def robber_strategy(self):
         if self.is_placement_phase:
             if not self.is_game_over:
+                # Choose random move from any node on the graph not currently occupied
                 avaible_nodes = set(self.graph.nodes()) - set(self.cop_nodes)
                 random_node = random.choice(list(avaible_nodes))
                 self.robber_node = random_node
                 self.is_placement_phase = False
         else:
             if not self.is_game_over:
+                # Choose random move from neighbouring nodes and node currenly at
                 y, x = self.robber_node
                 potential_moves = [(y, x), (y+1, x), (y-1, x), (y, x+1), (y, x-1)]
                 random_node = random.choice(potential_moves)
@@ -1051,7 +1049,7 @@ class AutomatedStrategyWindow(StrategyWindow):
         self.turn_label.setText("Cop's Turn")
         self.display_graph()
         self.check_game_over()
-        QTimer.singleShot(5, self.auto_cop_strategy)
+        QTimer.singleShot(50, self.auto_cop_strategy)
 
     """Handles logic for deciding cops moves to implement strategy of capturing robber"""
     def auto_cop_strategy(self):
@@ -1175,7 +1173,7 @@ class AutomatedStrategyWindow(StrategyWindow):
                 self.turn_label.setText("Robber's Turn")
                 self.display_graph()
                 self.check_game_over()
-                QTimer.singleShot(5, self.robber_strategy)
+                QTimer.singleShot(50, self.robber_strategy)
             
     """Check for if cop has captured robber"""
     def check_game_over(self):
@@ -1184,9 +1182,11 @@ class AutomatedStrategyWindow(StrategyWindow):
                 self.turn_label.setText("Game Over, Cops captured the robber")
                 self.is_game_over = True
 
+    """Button function to switch window to graph creation window"""
     def restart(self):
         self.parent.switch_to_starting_window()
 
+    """Clears the state variables so fresh game can be started when window is re switched into"""
     def reset_state(self):
         self.graph = None
         self.pos = {}
